@@ -231,8 +231,9 @@ namespace mongo {
 
         string cursorType;
         BSONObj indexBounds;
+        BSONObj indexKey;
         BSONObj oldPlan;
-        
+
         long long millis = 0;
         double numExplains = 0;
 
@@ -264,8 +265,10 @@ namespace mongo {
                     numExplains++;
 
                     if ( temp["cursor"].type() == String ) { 
-                        if ( cursorType.size() == 0 )
+                        if ( cursorType.size() == 0 ) {
                             cursorType = temp["cursor"].String();
+                            indexKey = temp["indexKey"].Obj();
+                        }
                         else if ( cursorType != temp["cursor"].String() )
                             cursorType = "multiple";
                     }
@@ -295,6 +298,9 @@ namespace mongo {
 
         if ( out.size() == 1 ) {
             b.append( "indexBounds" , indexBounds );
+            if ( ! indexKey.isEmpty() ) {
+                b.append( "indexKey" , indexKey );
+            }
             if ( ! oldPlan.isEmpty() ) {
                 // this is to stay in compliance with mongod behavior
                 // we should make this cleaner, i.e. {} == nothing

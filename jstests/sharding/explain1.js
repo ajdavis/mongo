@@ -18,25 +18,31 @@ for( i = 0; i < 10; ++i ) {
 
 // Without an index.
 explain = t.find( { a:{ $gte:5 } } ).explain();
+assert.eq( explain.clusteredType, 'ParallelSort' );
 assert.eq( explain.cursor, 'BasicCursor' );
 assert.eq( explain.n, 5 );
 assert.eq( explain.nscanned, 10 );
 assert.eq( explain.nscannedObjects, 10 );
+assert.eq( explain.indexKey, undefined );
 
 // With an index.
 t.ensureIndex( { a:1 } );
 explain = t.find( { a:{ $gte:5 } } ).explain();
+assert.eq( explain.clusteredType, 'ParallelSort' );
 assert.eq( explain.cursor, 'BtreeCursor a_1' );
 assert.eq( explain.n, 5 );
 assert.eq( explain.nscanned, 5 );
 assert.eq( explain.nscannedObjects, 5 );
+assert.eq( explain.indexKey, {a:1} );
 
 // With a covered index.
 t.ensureIndex( { a:1 } );
 explain = t.find( { a:{ $gte:5 } }, { _id:0, a:1 } ).explain();
+assert.eq( explain.clusteredType, 'ParallelSort' );
 assert.eq( explain.cursor, 'BtreeCursor a_1' );
 assert.eq( explain.n, 5 );
 assert.eq( explain.nscanned, 5 );
 assert.eq( explain.nscannedObjects, 5 ); // Covered indexes do not work with sharding.
+assert.eq( explain.indexKey, {a:1} );
 
 s.stop();
