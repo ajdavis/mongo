@@ -751,6 +751,10 @@ namespace mongo {
             return _spec->keyPattern();
         }
 
+        virtual BSONObj indexSpec() const {
+    		return _id->info.obj();
+    	}
+
         virtual void noteLocation() {
             // no-op since these are meant to be safe
         }

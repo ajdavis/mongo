@@ -39,7 +39,7 @@ namespace mongo {
     void ExplainPlanInfo::notePlan( const Cursor &cursor, bool scanAndOrder, bool indexOnly ) {
         _cursorName = const_cast<Cursor&>(cursor).toString();
         _indexBounds = cursor.prettyIndexBounds().getOwned();
-        _indexKey = const_cast<Cursor&>(cursor).indexKeyPattern().getOwned();
+        _indexSpec = cursor.indexSpec().getOwned();
         _scanAndOrder = scanAndOrder;
         _indexOnly = indexOnly;
         noteCursorUpdate( cursor );
@@ -74,7 +74,10 @@ namespace mongo {
         bob.appendNumber( "nscannedObjects", _nscannedObjects );
         bob.appendNumber( "nscanned", _nscanned );
         bob.append( "indexBounds", _indexBounds );
-        bob.append( "indexKey", _indexKey );
+        if ( ! _indexSpec.isEmpty()) {
+        	bob.append( "indexSpec", _indexSpec );
+        }
+
         return bob.obj();
     }
     
@@ -93,7 +96,9 @@ namespace mongo {
         bob.appendNumber( "nChunkSkips", clauseInfo.nChunkSkips() );
         bob.appendNumber( "millis", clauseInfo.millis() );
         bob.append( "indexBounds", _indexBounds );
-        bob.append( "indexKey", _indexKey );
+        if ( ! _indexSpec.isEmpty()) {
+        	bob.append( "indexSpec", _indexSpec );
+        }
         bob.appendElements( _details );
         return bob.obj();
     }

@@ -77,7 +77,7 @@ namespace mongo {
         bool _scanAndOrder;
         bool _indexOnly;
         BSONObj _indexBounds;
-        BSONObj _indexKey;
+        BSONObj _indexSpec;
         bool _picked;
         bool _done;
         BSONObj _details;

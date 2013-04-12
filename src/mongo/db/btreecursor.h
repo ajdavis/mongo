@@ -129,6 +129,8 @@ namespace mongo {
 
         virtual BSONObj prettyIndexBounds() const;
 
+        virtual BSONObj indexSpec() const;
+
         virtual CoveredIndexMatcher* matcher() const { return _matcher.get(); }
 
         virtual bool currentMatches( MatchDetails* details = 0 );

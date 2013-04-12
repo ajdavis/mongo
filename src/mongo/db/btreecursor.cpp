@@ -396,13 +396,17 @@ namespace mongo {
     }
     
     BSONObj BtreeCursor::prettyIndexBounds() const {
-        if ( !_independentFieldRanges ) {
-            return BSON( "start" << prettyKey( startKey ) << "end" << prettyKey( endKey ) );
-        }
-        else {
-            return _bounds->obj();
-        }
-    }
+		if ( !_independentFieldRanges ) {
+			return BSON( "start" << prettyKey( startKey ) << "end" << prettyKey( endKey ) );
+		}
+		else {
+			return _bounds->obj();
+		}
+	}
+
+    BSONObj BtreeCursor::indexSpec() const {
+		return indexDetails.info.obj();
+	}
 
     bool BtreeCursor::currentMatches( MatchDetails* details ) {
         // If currKey() might not match the specified _bounds, check whether or not it does.
