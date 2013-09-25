@@ -42,6 +42,8 @@ assert.eq( 50, shard1Coll.count() );
 // Start a moveChunk in the background; pause it at each point in the donor's
 // work flow, and try cleanupOrphaned on shard 0 and shard 1.
 //
+// The chunk [0, 50) moves from shard 0 to shard 1.
+//
 
 pauseMoveChunkAtStep( st.shard0, 1 );
 var joinMoveChunk = moveChunkParallel( st.s0.host,
@@ -49,8 +51,8 @@ var joinMoveChunk = moveChunkParallel( st.s0.host,
                                        coll.getFullName(),
                                        shards[1]._id );
 
-// Donor has reloaded shard view.
 waitForMoveChunkStep( mongos, 1 );
+// Donor has reloaded shard view.
 
 // Create orphans.
 shard0Coll.insert([{ _id: 51 }]);
@@ -65,8 +67,8 @@ assert.eq( 100, shard0Coll.count() );
 cleanupOrphaned( st.shard1, coll + "", 2 );
 assert.eq( 50, shard1Coll.count() );
 
-// Donor has updated chunks view and got distributed lock.
 proceedToMoveChunkStep( st.shard0, 2 );
+// Donor has updated chunks view and got distributed lock.
 
 // Create orphans.
 shard0Coll.insert([{ _id: 51 }]);
@@ -81,21 +83,48 @@ assert.eq( 100, shard0Coll.count() );
 cleanupOrphaned( st.shard1, coll + "", 2 );
 assert.eq( 50, shard1Coll.count() );
 
-// Donor has called _recvChunkStart on recipient, recipient ran it.
 proceedToMoveChunkStep( st.shard0, 3 );
+// Recipient has run _recvChunkStart; docs are cloned and chunk [0, 50) is
+// pending on recipient.
 
-// Finished sending mods.
+// Create orphans.
+shard0Coll.insert([{ _id: 51 }]);
+assert.eq( null, shard0Coll.getDB().getLastError() );
+assert.eq( 101, shard0Coll.count() );
+shard1Coll.insert([{ _id: -1 }]);
+assert.eq( null, shard1Coll.getDB().getLastError() );
+assert.eq( 101, shard1Coll.count() );
+
+cleanupOrphaned( st.shard0, coll + "", 2 );
+assert.eq( 100, shard0Coll.count() );
+cleanupOrphaned( st.shard1, coll + "", 2 );
+assert.eq( 100, shard1Coll.count() );
+
 proceedToMoveChunkStep( st.shard0, 4 );
+// Finished sending mods.
 
-// Donor has updated config servers.
+// Create orphans.
+shard0Coll.insert([{ _id: 51 }]);
+assert.eq( null, shard0Coll.getDB().getLastError() );
+assert.eq( 101, shard0Coll.count() );
+shard1Coll.insert([{ _id: -1 }]);
+assert.eq( null, shard1Coll.getDB().getLastError() );
+assert.eq( 101, shard1Coll.count() );
+
+cleanupOrphaned( st.shard0, coll + "", 2 );
+assert.eq( 100, shard0Coll.count() );
+cleanupOrphaned( st.shard1, coll + "", 2 );
+assert.eq( 100, shard1Coll.count() );
+
 proceedToMoveChunkStep( st.shard0, 5 );
+// Donor has updated config servers.
 
-// Donor has done post-move delete.
 proceedToMoveChunkStep( st.shard0, 6 );
+// Donor has done post-move delete.
 
-// Donor has returned from moveChunk command.
 unpauseMoveChunkAtStep( st.shard0, 6 );
 joinMoveChunk();
+// Donor has returned from moveChunk command.
 
 jsTest.log( "DONE!" );
 st.stop();
