@@ -32,7 +32,7 @@ function moveChunkParallel( mongosURL, findCriteria, ns, toShardId ) {
 }
 
 //
-// Configure a failpoint to make moveChunk hang at a step.
+// Configure a failpoint to make moveChunk hang at a step (1 through 6).
 //
 function pauseMoveChunkAtStep( shardConnection, stepNumber ) {
     configureMoveChunkFailPoint( shardConnection, stepNumber, 'alwaysOn' );
@@ -46,7 +46,7 @@ function unpauseMoveChunkAtStep( shardConnection, stepNumber ) {
 }
 
 function configureMoveChunkFailPoint( shardConnection, stepNumber, mode ) {
-    assert( stepNumber > 0);
+    assert( stepNumber >= 1);
     assert( stepNumber <= 6 );
     var admin = shardConnection.getDB( 'admin' );
     admin.runCommand({ configureFailPoint: 'moveChunkHangAtStep' + stepNumber,
@@ -54,27 +54,23 @@ function configureMoveChunkFailPoint( shardConnection, stepNumber, mode ) {
 }
 
 //
-// Wait for moveChunk to reach a step (0 through 6). Assumes only one moveChunk
+// Wait for moveChunk to reach a step (1 through 6). Assumes only one moveChunk
 // is in mongos's currentOp.
 //
 function waitForMoveChunkStep( mongosConnection, stepNumber ) {
     var searchString = 'step ' + stepNumber,
         admin = mongosConnection.getDB( 'admin' );
 
-    assert( stepNumber > 0);
+    assert( stepNumber >= 1);
     assert( stepNumber <= 6 );
+
     assert.soon( function() {
         var in_progress = admin.currentOp().inprog;
         for ( var i = 0; i < in_progress.length; ++i ) {
             var op = in_progress[i];
-            if ( op.query
-                 && op.query.moveChunk
-                 && op.msg.startsWith( searchString ) )
-            {
-                return true;
-            }
+            if ( op.query && op.query.moveChunk ) { return op; }
         }
 
-        return false;
+        return op && op.msg && op.msg.startsWith( searchString );
     });
 }

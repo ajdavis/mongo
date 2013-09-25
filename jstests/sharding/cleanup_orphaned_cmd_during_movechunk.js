@@ -31,18 +31,24 @@ var shard0Admin = st.shard0.getDB( "admin" );
 // cleanupOrphaned on shard 0 and shard 1.
 //
 
-pauseMoveChunkAtStep( st.shard0, 4 );
+pauseMoveChunkAtStep( st.shard0, 1 );
 var joinMoveChunk = moveChunkParallel( st.s0.host,
-                                   { _id : 0 },
-                                   coll.getFullName(),
-                                   shards[1]._id );
+                                       { _id : 0 },
+                                       coll.getFullName(),
+                                       shards[1]._id );
 
-waitForMoveChunkStep( mongos, 4 );
-jsTest.log( "Unpausing moveChunk" );
+for ( var stepNumber = 1; stepNumber < 6; stepNumber++ ) {
+    waitForMoveChunkStep( mongos, stepNumber );
+    jsTest.log( "moveChunk proceeding from step " + stepNumber
+                + " to " + (stepNumber + 1));
 
-unpauseMoveChunkAtStep( st.shard0, 4 );
-//waitForMoveChunkStep( 5 )
+    pauseMoveChunkAtStep( st.shard0, stepNumber + 1 );
+    unpauseMoveChunkAtStep( st.shard0, stepNumber );
+}
 
+unpauseMoveChunkAtStep( st.shard0, 6 );
+
+jsTest.log( "moveChunk completing" );
 
 //
 //// Half of the data is on each shard
