@@ -2,7 +2,7 @@
 // Tests cleanupOrphaned concurrent with moveChunk.
 //
 
-load( './jstests/libs/test_background_ops.js' );
+load( './jstests/libs/test_chunk_manipulation.js' );
 
 var staticMongod = MongoRunner.runMongod({});  // For startParallelOps.
 var options = { separateConfig : true, shardOptions : { verbose : 0 } };
@@ -26,51 +26,22 @@ assert.eq( null, coll.getDB().getLastError() );
 
 var shard0Admin = st.shard0.getDB( "admin" );
 
+//
 // Start a moveChunk in the background; pause it at each point and try
 // cleanupOrphaned on shard 0 and shard 1.
-shard0Admin.runCommand({
-    configureFailPoint: 'moveChunkPreCommitHang', mode: 'alwaysOn'});
+//
 
+pauseMoveChunkAtStep( st.shard0, 4 );
+var joinMoveChunk = moveChunkParallel( st.s0.host,
+                                   { _id : 0 },
+                                   coll.getFullName(),
+                                   shards[1]._id );
 
-// TODO: if this fails?
-function runMoveChunk( mongosURL, findCriteria, collName, shard1_id ) {
-    var mongos = new Mongo( mongosURL ),
-        admin = mongos.getDB( 'admin' );
-
-    jsTest.log("runMoveChunk: admin = " + admin + " mongosURL = " + mongosURL + " findCriteria = " + findCriteria);
-    printjson( findCriteria );
-
-    assert( admin.runCommand({ moveChunk : collName,
-                               find : findCriteria,
-                               to : shard1_id,
-                               _waitForDelete : true }).ok );
-
-    jsTest.log("moveChunk is complete")
-}
-
-var joinMoveChunk = startParallelOps(
-    staticMongod, runMoveChunk,
-    [ st.s0.host, { _id : 0 }, coll.getFullName(), shards[1]._id ] );
-
-// Wait for moveChunk to reach step 4.
-assert.soon( function() {
-    var in_progress = admin.currentOp().inprog;
-    jsTestLog( "assert soon " );
-    printjson(in_progress);
-    for ( var i = 0; i < in_progress.length; ++i ) {
-        var op = in_progress[i];
-        if ( op.query && op.query.moveChunk && op.msg.startsWith( 'step 4' ) ) {
-            return true;
-        }
-    }
-
-    return false;
-});
-
+waitForMoveChunkStep( mongos, 4 );
 jsTest.log( "Unpausing moveChunk" );
 
-shard0Admin.runCommand({
-    configureFailPoint: 'moveChunkPreCommitHang', mode: 'off'});
+unpauseMoveChunkAtStep( st.shard0, 4 );
+//waitForMoveChunkStep( 5 )
 
 
 //
