@@ -39,8 +39,8 @@ assert.eq( null, coll.getDB().getLastError() );
 assert.eq( 50, shard1Coll.count() );
 
 //
-// Start a moveChunk in the background; pause it at each point and try
-// cleanupOrphaned on shard 0 and shard 1.
+// Start a moveChunk in the background; pause it at each point in the donor's
+// work flow, and try cleanupOrphaned on shard 0 and shard 1.
 //
 
 pauseMoveChunkAtStep( st.shard0, 1 );
@@ -49,7 +49,7 @@ var joinMoveChunk = moveChunkParallel( st.s0.host,
                                        coll.getFullName(),
                                        shards[1]._id );
 
-// Donor has reloaded config.
+// Donor has reloaded shard view.
 waitForMoveChunkStep( mongos, 1 );
 
 // Create orphans.
@@ -65,27 +65,36 @@ assert.eq( 100, shard0Coll.count() );
 cleanupOrphaned( st.shard1, coll + "", 2 );
 assert.eq( 50, shard1Coll.count() );
 
-// make sure my view is complete and lock
+// Donor has updated chunks view and got distributed lock.
 proceedToMoveChunkStep( st.shard0, 2 );
 
-// start migrate
+// Create orphans.
+shard0Coll.insert([{ _id: 51 }]);
+assert.eq( null, shard0Coll.getDB().getLastError() );
+assert.eq( 101, shard0Coll.count() );
+shard1Coll.insert([{ _id: -1 }]);
+assert.eq( null, shard1Coll.getDB().getLastError() );
+assert.eq( 51, shard1Coll.count() );
+
+cleanupOrphaned( st.shard0, coll + "", 2 );
+assert.eq( 100, shard0Coll.count() );
+cleanupOrphaned( st.shard1, coll + "", 2 );
+assert.eq( 50, shard1Coll.count() );
+
+// Donor has called _recvChunkStart on recipient, recipient ran it.
 proceedToMoveChunkStep( st.shard0, 3 );
 
-// finish migrate
+// Finished sending mods.
 proceedToMoveChunkStep( st.shard0, 4 );
 
-// update config servers
+// Donor has updated config servers.
 proceedToMoveChunkStep( st.shard0, 5 );
 
-// wait for all current cursors to expire
+// Donor has done post-move delete.
 proceedToMoveChunkStep( st.shard0, 6 );
 
-// finishing
+// Donor has returned from moveChunk command.
 unpauseMoveChunkAtStep( st.shard0, 6 );
-
-jsTest.log( "moveChunk completing" );
-
-// post-move delete has finished.
 joinMoveChunk();
 
 jsTest.log( "DONE!" );
