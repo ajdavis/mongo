@@ -16,19 +16,20 @@ load( './jstests/libs/test_background_ops.js' );
 function moveChunkParallel( mongosURL, findCriteria, ns, toShardId ) {
     function runMoveChunk( mongosURL, findCriteria, ns, toShardId ) {
         var mongos = new Mongo( mongosURL ),
-            admin = mongos.getDB( 'admin' );
+            admin = mongos.getDB( 'admin' ),
+            result = admin.runCommand({ moveChunk : ns,
+                                        find : findCriteria,
+                                        to : toShardId,
+                                        _waitForDelete : true });
 
-        assert( admin.runCommand({ moveChunk : ns,
-                                   find : findCriteria,
-                                   to : toShardId,
-                                   _waitForDelete : true }).ok );
+        printjson( result );
+        assert( result.ok );
     }
 
-    var joinMoveChunk = startParallelOps(
+    // Return the join function.
+    return startParallelOps(
         staticMongod, runMoveChunk,
         [ mongosURL, findCriteria, ns, toShardId ] );
-
-    return joinMoveChunk;
 }
 
 //
@@ -43,6 +44,15 @@ function pauseMoveChunkAtStep( shardConnection, stepNumber ) {
 //
 function unpauseMoveChunkAtStep( shardConnection, stepNumber ) {
     configureMoveChunkFailPoint( shardConnection, stepNumber, 'off' );
+}
+
+function proceedToMoveChunkStep( shardConnection, stepNumber ) {
+    jsTest.log( "moveChunk proceeding from step " + (stepNumber - 1)
+                + " to " + stepNumber );
+
+    pauseMoveChunkAtStep( shardConnection, stepNumber );
+    unpauseMoveChunkAtStep( shardConnection, stepNumber - 1 );
+    waitForMoveChunkStep( shardConnection, stepNumber );
 }
 
 function configureMoveChunkFailPoint( shardConnection, stepNumber, mode ) {
@@ -68,9 +78,30 @@ function waitForMoveChunkStep( mongosConnection, stepNumber ) {
         var in_progress = admin.currentOp().inprog;
         for ( var i = 0; i < in_progress.length; ++i ) {
             var op = in_progress[i];
-            if ( op.query && op.query.moveChunk ) { return op; }
+            if ( op.query && op.query.moveChunk ) {
+                return op.msg.startsWith( searchString );
+            }
+        }
+    });
+}
+
+//
+// Run the cleanupOrphaned command on a shard. If expectedIterations is passed,
+// assert cleanupOrphaned runs the expected number of times before stopping.
+function cleanupOrphaned( shardConnection, ns, expectedIterations ) {
+    var admin = shardConnection.getDB('admin' ),
+        result = admin.runCommand({ cleanupOrphaned: ns } ),
+        iterations = 0;
+
+    assert( result.ok );
+    while ( result.stoppedAtKey ) {
+        if ( expectedIterations !== undefined ) {
+            assert( ++iterations < expectedIterations );
         }
 
-        return op && op.msg && op.msg.startsWith( searchString );
-    });
+        result = admin.runCommand({ cleanupOrphaned : ns,
+                                    startingFromKey : result.stoppedAtKey });
+
+        assert( result.ok );
+    }
 }

@@ -9,22 +9,34 @@ var options = { separateConfig : true, shardOptions : { verbose : 0 } };
 var st = new ShardingTest({ shards : 2, mongos : 1, other : options });
 st.stopBalancer();
 
-var mongos = st.s0;
-var admin = mongos.getDB( "admin" );
-var shards = mongos.getCollection( "config.shards" ).find().toArray();
-var coll = mongos.getCollection( "foo.bar" );
+var mongos = st.s0,
+    admin = mongos.getDB( "admin" ),
+    shards = mongos.getCollection( "config.shards" ).find().toArray(),
+    coll = mongos.getCollection( "foo.bar" ),
+    shard0Coll = st.shard0.getCollection( coll + "" ),
+    shard1Coll = st.shard1.getCollection( coll + "" ),
+    shard0Admin = st.shard0.getDB( "admin" );
 
+// [minKey, 0) and [0, 50) are on shard 0. [50, maxKey) are on shard 1.
 assert( admin.runCommand({ enableSharding : coll.getDB() + "" }).ok );
 printjson( admin.runCommand({ movePrimary : coll.getDB() + "", to : shards[0]._id }) );
 assert( admin.runCommand({ shardCollection : coll + "", key : { _id : 1 } }).ok );
 assert( admin.runCommand({ split : coll + "", middle : { _id : 0 } }).ok );
+assert( admin.runCommand({ split : coll + "", middle : { _id : 50 } }).ok );
+assert( admin.runCommand({ moveChunk : coll + "",
+                           find : { _id : 50 },
+                           to : shards[1]._id,
+                           _waitForDelete : true }).ok );
 
 jsTest.log( "Inserting 100 docs into shard 0...." );
-
 for ( var i = -50; i < 50; i++ ) coll.insert({ _id : i });
 assert.eq( null, coll.getDB().getLastError() );
+assert.eq( 100, shard0Coll.count() );
 
-var shard0Admin = st.shard0.getDB( "admin" );
+jsTest.log( "Inserting 50 docs into shard 1...." );
+for ( i = 50; i < 100; i++ ) coll.insert({ _id : i });
+assert.eq( null, coll.getDB().getLastError() );
+assert.eq( 50, shard1Coll.count() );
 
 //
 // Start a moveChunk in the background; pause it at each point and try
@@ -37,86 +49,44 @@ var joinMoveChunk = moveChunkParallel( st.s0.host,
                                        coll.getFullName(),
                                        shards[1]._id );
 
-for ( var stepNumber = 1; stepNumber < 6; stepNumber++ ) {
-    waitForMoveChunkStep( mongos, stepNumber );
-    jsTest.log( "moveChunk proceeding from step " + stepNumber
-                + " to " + (stepNumber + 1));
+// Donor has reloaded config.
+waitForMoveChunkStep( mongos, 1 );
 
-    pauseMoveChunkAtStep( st.shard0, stepNumber + 1 );
-    unpauseMoveChunkAtStep( st.shard0, stepNumber );
-}
+// Create orphans.
+shard0Coll.insert([{ _id: 51 }]);
+assert.eq( null, shard0Coll.getDB().getLastError() );
+assert.eq( 101, shard0Coll.count() );
+shard1Coll.insert([{ _id: -1 }]);
+assert.eq( null, shard1Coll.getDB().getLastError() );
+assert.eq( 51, shard1Coll.count() );
 
+cleanupOrphaned( st.shard0, coll + "", 2 );
+assert.eq( 100, shard0Coll.count() );
+cleanupOrphaned( st.shard1, coll + "", 2 );
+assert.eq( 50, shard1Coll.count() );
+
+// make sure my view is complete and lock
+proceedToMoveChunkStep( st.shard0, 2 );
+
+// start migrate
+proceedToMoveChunkStep( st.shard0, 3 );
+
+// finish migrate
+proceedToMoveChunkStep( st.shard0, 4 );
+
+// update config servers
+proceedToMoveChunkStep( st.shard0, 5 );
+
+// wait for all current cursors to expire
+proceedToMoveChunkStep( st.shard0, 6 );
+
+// finishing
 unpauseMoveChunkAtStep( st.shard0, 6 );
 
 jsTest.log( "moveChunk completing" );
 
-//
-//// Half of the data is on each shard
-//
-//jsTest.log( "Inserting some orphaned docs..." );
-//
-//var shard0Coll = st.shard0.getCollection( coll + "" );
-//shard0Coll.insert({ _id : 10 });
-//assert.eq( null, shard0Coll.getDB().getLastError() );
-//
-//assert.neq( 50, shard0Coll.count() );
-//assert.eq( 100, coll.find().itcount() );
-//
-//jsTest.log( "Cleaning up orphaned data..." );
-//
-//var result = shard0Admin.runCommand({ cleanupOrphaned : coll + "" });
-//while ( result.ok && result.stoppedAtKey ) {
-//    printjson( result );
-//    result = shard0Admin.runCommand({ cleanupOrphaned : coll + "",
-//                                      startingFromKey : result.stoppedAtKey });
-//}
-//
-//printjson( result );
-//assert( result.ok );
-//assert.eq( 50, shard0Coll.count() );
-//assert.eq( 100, coll.find().itcount() );
-//
-//jsTest.log( "Moving half the data out again (making a hole)..." );
-//
-//assert( admin.runCommand({ split : coll + "", middle : { _id : -35 } }).ok );
-//assert( admin.runCommand({ split : coll + "", middle : { _id : -10 } }).ok );
-//// Make sure we wait for the deletion here, otherwise later cleanup could fail
-//assert( admin.runCommand({ moveChunk : coll + "",
-//                           find : { _id : -35 },
-//                           to : shards[1]._id,
-//                           _waitForDelete : true }).ok );
-//
-//// 1/4 the data is on the first shard
-//
-//jsTest.log( "Inserting some more orphaned docs..." );
-//
-//var shard0Coll = st.shard0.getCollection( coll + "" );
-//shard0Coll.insert({ _id : -36 });
-//shard0Coll.insert({ _id : -10 });
-//shard0Coll.insert({ _id : 0 });
-//shard0Coll.insert({ _id : 10 });
-//assert.eq( null, shard0Coll.getDB().getLastError() );
-//
-//assert.neq( 25, shard0Coll.count() );
-//assert.eq( 100, coll.find().itcount() );
-//
-//jsTest.log( "Cleaning up more orphaned data..." );
-//
-//var shard0Admin = st.shard0.getDB( "admin" );
-//var result = shard0Admin.runCommand({ cleanupOrphaned : coll + "" });
-//while ( result.ok && result.stoppedAtKey ) {
-//    printjson( result );
-//    result = shard0Admin.runCommand({ cleanupOrphaned : coll + "",
-//                                      startingFromKey : result.stoppedAtKey });
-//}
-//
-//printjson( result );
-//assert( result.ok );
-//assert.eq( 25, shard0Coll.count() );
-//assert.eq( 100, coll.find().itcount() );
-
+// post-move delete has finished.
 joinMoveChunk();
 
-//jsTest.log( "DONE!" );
-//
-//st.stop();
+jsTest.log( "DONE!" );
+st.stop();
