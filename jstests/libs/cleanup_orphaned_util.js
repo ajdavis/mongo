@@ -2,7 +2,9 @@
 // Utilities for testing cleanupOrphaned command.
 //
 
+//
 // Get the shard key in the middle of a collection.
+//
 function getMiddle( shardConnection, ns, keyPattern ) {
     var admin = shardConnection.getDB('admin' ),
         splitResult = admin.runCommand(
@@ -17,6 +19,30 @@ function getMiddle( shardConnection, ns, keyPattern ) {
     return splitResult.splitKeys[0];
 }
 
+
+//
+// Run the cleanupOrphaned command on a shard. If expectedIterations is passed,
+// assert cleanupOrphaned runs the expected number of times before stopping.
+//
+function cleanupOrphaned( shardConnection, ns, expectedIterations ) {
+    var admin = shardConnection.getDB('admin' ),
+        result = admin.runCommand({ cleanupOrphaned: ns } ),
+        iterations = 0;
+
+    assert( result.ok );
+    while ( result.stoppedAtKey ) {
+        if ( expectedIterations !== undefined ) {
+            assert( ++iterations < expectedIterations );
+        }
+
+        result = admin.runCommand({ cleanupOrphaned : ns,
+                                    startingFromKey : result.stoppedAtKey });
+
+        assert( result.ok );
+    }
+}
+
+// TODO: doc
 function testCleanupOrphaned(options) {
     var st = new ShardingTest(
         {

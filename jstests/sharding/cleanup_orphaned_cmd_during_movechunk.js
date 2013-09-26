@@ -3,6 +3,7 @@
 //
 
 load( './jstests/libs/chunk_manipulation_util.js' );
+load( './jstests/libs/cleanup_orphaned_util.js' );
 
 var staticMongod = MongoRunner.runMongod({});  // For startParallelOps.
 var options = { separateConfig : true, shardOptions : { verbose : 0 } };

@@ -142,24 +142,3 @@ function waitForMigrateStep( shardConnection, stepNumber ) {
         return false;
     });
 }
-
-//
-// Run the cleanupOrphaned command on a shard. If expectedIterations is passed,
-// assert cleanupOrphaned runs the expected number of times before stopping.
-function cleanupOrphaned( shardConnection, ns, expectedIterations ) {
-    var admin = shardConnection.getDB('admin' ),
-        result = admin.runCommand({ cleanupOrphaned: ns } ),
-        iterations = 0;
-
-    assert( result.ok );
-    while ( result.stoppedAtKey ) {
-        if ( expectedIterations !== undefined ) {
-            assert( ++iterations < expectedIterations );
-        }
-
-        result = admin.runCommand({ cleanupOrphaned : ns,
-                                    startingFromKey : result.stoppedAtKey });
-
-        assert( result.ok );
-    }
-}
