@@ -67,9 +67,9 @@ function configureMoveChunkFailPoint( shardConnection, stepNumber, mode ) {
 // Wait for moveChunk to reach a step (1 through 6). Assumes only one moveChunk
 // is in mongos's currentOp.
 //
-function waitForMoveChunkStep( mongosConnection, stepNumber ) {
+function waitForMoveChunkStep( shardConnection, stepNumber ) {
     var searchString = 'step ' + stepNumber,
-        admin = mongosConnection.getDB( 'admin' );
+        admin = shardConnection.getDB( 'admin' );
 
     assert( stepNumber >= 1);
     assert( stepNumber <= 6 );
@@ -82,6 +82,64 @@ function waitForMoveChunkStep( mongosConnection, stepNumber ) {
                 return op.msg.startsWith( searchString );
             }
         }
+
+        return false;
+    });
+}
+
+//
+// Configure a failpoint to make migration thread hang at a step (1 through 5).
+//
+function pauseMigrateAtStep( shardConnection, stepNumber ) {
+    configureMigrateFailPoint( shardConnection, stepNumber, 'alwaysOn' );
+}
+
+//
+// Allow _recvChunkStart to proceed past a step.
+//
+function unpauseMigrateAtStep( shardConnection, stepNumber ) {
+    configureMigrateFailPoint( shardConnection, stepNumber, 'off' );
+}
+
+function proceedToMigrateStep( shardConnection, stepNumber ) {
+    jsTest.log( "Migration thread proceeding from step " + (stepNumber - 1)
+                + " to " + stepNumber );
+
+    pauseMigrateAtStep( shardConnection, stepNumber );
+    unpauseMigrateAtStep( shardConnection, stepNumber - 1 );
+    waitForMigrateStep( shardConnection, stepNumber );
+}
+
+function configureMigrateFailPoint( shardConnection, stepNumber, mode ) {
+    assert( stepNumber >= 1);
+    assert( stepNumber <= 5 );
+    var admin = shardConnection.getDB( 'admin' );
+    admin.runCommand({ configureFailPoint: 'migrateThreadHangAtStep' + stepNumber,
+                       mode: mode });
+}
+
+//
+// Wait for moveChunk to reach a step (1 through 6). Assumes only one moveChunk
+// is in mongos's currentOp.
+//
+function waitForMigrateStep( shardConnection, stepNumber ) {
+    var searchString = 'step ' + stepNumber,
+        admin = shardConnection.getDB( 'admin' );
+
+    assert( stepNumber >= 1);
+    assert( stepNumber <= 5 );
+
+    assert.soon( function() {
+        // verbose = True so we see the migration thread.
+        var in_progress = admin.currentOp(true).inprog;
+        for ( var i = 0; i < in_progress.length; ++i ) {
+            var op = in_progress[i];
+            if ( op.desc && op.desc === 'migrateThread' ) {
+                return op.msg.startsWith( searchString );
+            }
+        }
+
+        return false;
     });
 }
 
