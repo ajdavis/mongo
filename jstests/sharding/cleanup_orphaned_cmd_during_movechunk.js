@@ -2,7 +2,7 @@
 // Tests cleanupOrphaned concurrent with moveChunk.
 //
 
-load( './jstests/libs/test_chunk_manipulation.js' );
+load( './jstests/libs/chunk_manipulation_util.js' );
 
 var staticMongod = MongoRunner.runMongod({});  // For startParallelOps.
 var options = { separateConfig : true, shardOptions : { verbose : 0 } };
