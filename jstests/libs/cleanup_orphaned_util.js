@@ -24,7 +24,11 @@ function cleanupOrphaned( shardConnection, ns, expectedIterations ) {
     }
 }
 
-// TODO: doc
+// Pass an options object like:
+// {
+//     shardKey: { a: 1, b: 1 },
+//     keyGen: function() { return [{ a: 'foo', b: 1 }, { a: 'bar', b: 2 }]; }
+// }
 function testCleanupOrphaned(options) {
     var st = new ShardingTest(
         {
@@ -41,11 +45,11 @@ function testCleanupOrphaned(options) {
         coll = mongos.getCollection( "foo.bar" ),
         shard0Coll = st.shard0.getCollection( coll.getFullName() ),
         shard0Admin = st.shard0.getDB( "admin" ),
-        ids = options.idGenerator(),
-        beginning = ids[0],
-        oneQuarter = ids[Math.round(ids.length / 4)],
-        middle = ids[Math.round(ids.length / 2)],
-        threeQuarters = ids[Math.round(3 * ids.length / 4)],
+        keys = options.keyGen(),
+        beginning = keys[0],
+        oneQuarter = keys[Math.round(keys.length / 4)],
+        middle = keys[Math.round(keys.length / 2)],
+        threeQuarters = keys[Math.round(3 * keys.length / 4)],
         result;
 
     assert( admin.runCommand({ enableSharding : coll.getDB().getName() }).ok );
@@ -55,69 +59,69 @@ function testCleanupOrphaned(options) {
 
     jsTest.log( "Inserting some regular docs..." );
 
-    for ( var i = 0; i < ids.length; i++ ) coll.insert({ _id : ids[i] });
+    for ( var i = 0; i < keys.length; i++ ) coll.insert( keys[i] );
     assert.eq( null, coll.getDB().getLastError() );
 
     assert( admin.runCommand(
         {
             split : coll.getFullName(),
-            middle: { _id: middle }
+            middle: middle
         } ).ok );
 
     assert( admin.runCommand(
         {
             moveChunk : coll.getFullName(),
-            find : { _id: middle },
+            find : middle,
             to : shards[1]._id,
             _waitForDelete : true
         }).ok );
 
     // Half of the data is on each shard
-    assert.eq( ids.length / 2, shard0Coll.count() );
-    assert.eq( ids.length, coll.find().itcount() );
+    assert.eq( keys.length / 2, shard0Coll.count() );
+    assert.eq( keys.length, coll.find().itcount() );
 
     jsTest.log( "Inserting some orphaned docs..." );
 
-    shard0Coll.insert({ _id: afterMiddle });
+    shard0Coll.insert( afterMiddle );
     assert.eq( null, shard0Coll.getDB().getLastError() );
-    assert.neq( ids.length / 2, shard0Coll.count() );
+    assert.neq( keys.length / 2, shard0Coll.count() );
 
     jsTest.log( "Cleaning up orphaned data..." );
 
     cleanupOrphaned( st.shard0, coll.getFullName(), 2 );
-    assert.eq( ids.length / 2, shard0Coll.count() );
-    assert.eq( ids.length, coll.find().itcount() );
+    assert.eq( keys.length / 2, shard0Coll.count() );
+    assert.eq( keys.length, coll.find().itcount() );
 
     jsTest.log( "Moving half the data out again (making a hole)..." );
 
     assert( admin.runCommand(
         {
             split : coll.getFullName(),
-            middle : { _id : oneQuarter }
+            middle : oneQuarter
         }).ok );
 
     assert( admin.runCommand({ moveChunk : coll.getFullName(),
-                               find : { _id : beginning },
+                               find : beginning,
                                to : shards[1]._id,
                                _waitForDelete : true }).ok );
 
     // 1/4 the data is on the first shard
-    assert.eq( Math.round(ids.length / 4), shard0Coll.count() );
+    assert.eq( Math.round(keys.length / 4), shard0Coll.count() );
     assert.eq( 100, coll.find().itcount() );
 
     jsTest.log( "Inserting some more orphaned docs..." );
 
-    shard0Coll.insert({ _id : oneQuarter });
-    shard0Coll.insert({ _id : middle });
+    shard0Coll.insert( oneQuarter );
+    shard0Coll.insert( middle );
     assert.eq( null, shard0Coll.getDB().getLastError() );
-    assert.neq( Math.round(ids.length / 4), shard0Coll.count() );
+    assert.neq( Math.round(keys.length / 4), shard0Coll.count() );
     assert.eq( 100, coll.find().itcount() );
 
     jsTest.log( "Cleaning up more orphaned data..." );
 
     // Now there are 3 regions, not 2.
     cleanupOrphaned( st.shard0, 3 );
-    assert.eq( Math.round(ids.length / 4), shard0Coll.count() );
+    assert.eq( Math.round(keys.length / 4), shard0Coll.count() );
     assert.eq( 100, coll.find().itcount() );
 
     jsTest.log( "DONE!" );
