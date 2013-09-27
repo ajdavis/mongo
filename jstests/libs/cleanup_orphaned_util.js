@@ -11,6 +11,7 @@ function cleanupOrphaned( shardConnection, ns, expectedIterations ) {
         result = admin.runCommand({ cleanupOrphaned: ns } ),
         iterations = 0;
 
+    if (!result.ok) { printjson( result ); }
     assert( result.ok );
     while ( result.stoppedAtKey ) {
         if ( expectedIterations !== undefined ) {
@@ -26,6 +27,7 @@ function cleanupOrphaned( shardConnection, ns, expectedIterations ) {
 
 // Pass an options object like:
 // {
+//     name: 'Compound shard key',
 //     shardKey: { a: 1, b: 1 },
 //     keyGen: function() { return [{ a: 'foo', b: 1 }, { a: 'bar', b: 2 }]; }
 // }
@@ -44,13 +46,14 @@ function testCleanupOrphaned(options) {
         shards = mongos.getCollection( "config.shards" ).find().toArray(),
         coll = mongos.getCollection( "foo.bar" ),
         shard0Coll = st.shard0.getCollection( coll.getFullName() ),
-        shard0Admin = st.shard0.getDB( "admin" ),
         keys = options.keyGen(),
         beginning = keys[0],
         oneQuarter = keys[Math.round(keys.length / 4)],
         middle = keys[Math.round(keys.length / 2)],
         threeQuarters = keys[Math.round(3 * keys.length / 4)],
         result;
+
+    jsTest.log( "Starting cleanupOrphaned sub-test: " + options.name );
 
     assert( admin.runCommand({ enableSharding : coll.getDB().getName() }).ok );
     printjson( admin.runCommand({ movePrimary : coll.getDB().getName(), to : shards[0]._id }) );
@@ -82,7 +85,7 @@ function testCleanupOrphaned(options) {
 
     jsTest.log( "Inserting some orphaned docs..." );
 
-    shard0Coll.insert( afterMiddle );
+    shard0Coll.insert( threeQuarters );
     assert.eq( null, shard0Coll.getDB().getLastError() );
     assert.neq( keys.length / 2, shard0Coll.count() );
 
@@ -120,7 +123,7 @@ function testCleanupOrphaned(options) {
     jsTest.log( "Cleaning up more orphaned data..." );
 
     // Now there are 3 regions, not 2.
-    cleanupOrphaned( st.shard0, 3 );
+    cleanupOrphaned( st.shard0, coll.getFullName(), 3 );
     assert.eq( Math.round(keys.length / 4), shard0Coll.count() );
     assert.eq( 100, coll.find().itcount() );
 

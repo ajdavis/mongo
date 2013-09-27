@@ -6,10 +6,23 @@ load( './jstests/libs/cleanup_orphaned_util.js' );
 
 var cleanupOrphanedTestSpecs = [
     {
-        shardKey: {_id: 1 },
+        name: 'Shard on _id',
+        shardKey: { _id: 1 },
         keyGen: function() {
             var ids = [];
             for ( var i = -50; i < 50; i++ ) { ids.push({ _id: i }); }
+            return ids;
+        }
+    },
+    {
+        name: 'Compound shard key',
+        shardKey: { a: 1, b: 1 },
+        keyGen: function() {
+            var ids = [];
+            for ( var i = -50; i < 50; i++ ) {
+                ids.push({ a: i, b: Math.random() });
+            }
+
             return ids;
         }
     }
