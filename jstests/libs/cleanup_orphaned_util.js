@@ -9,20 +9,21 @@
 function cleanupOrphaned( shardConnection, ns, expectedIterations ) {
     var admin = shardConnection.getDB('admin' ),
         result = admin.runCommand({ cleanupOrphaned: ns } ),
-        iterations = 0;
+        iterations = 1;
 
     if (!result.ok) { printjson( result ); }
     assert( result.ok );
     while ( result.stoppedAtKey ) {
-        if ( expectedIterations !== undefined ) {
-            assert( ++iterations < expectedIterations );
-        }
-
         result = admin.runCommand({ cleanupOrphaned : ns,
                                     startingFromKey : result.stoppedAtKey });
 
         assert( result.ok );
+        ++iterations;
     }
+
+    assert.eq( iterations, expectedIterations, "Expected to run " +
+        "cleanupOrphaned" + expectedIterations + " times, but it only ran " +
+        iterations + " times before stoppedAtKey was null.")
 }
 
 // Pass an options object like:

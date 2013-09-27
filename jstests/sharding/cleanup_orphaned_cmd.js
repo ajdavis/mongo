@@ -25,7 +25,19 @@ var cleanupOrphanedTestSpecs = [
 
             return ids;
         }
-    }
+    },
+//    {
+//        name: 'Hashed shard key',
+//        shardKey: { a: 'hashed' },
+//        keyGen: function() {
+//            var ids = [];
+//            for ( var i = -50; i < 50; i++ ) {
+//                ids.push({ a: i });
+//            }
+//
+//            return ids;
+//        }
+//    }
 ];
 
 for ( var i = 0; i < cleanupOrphanedTestSpecs.length; i++ ) {
