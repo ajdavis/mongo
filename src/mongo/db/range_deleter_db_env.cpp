@@ -35,8 +35,14 @@
 #include "mongo/db/repl/rs.h"
 #include "mongo/db/repl/write_concern.h"
 #include "mongo/s/d_logic.h"
+#include "mongo/util/fail_point_service.h"
 
 namespace mongo {
+
+    // A replica set primary waits an hour for a majority to replicate deletes. To change the
+    // timeout to 3 seconds, run this command:
+    // {configureFailPoint: 'rangeDeleterWTimeout', mode: 'alwaysOn', data: {seconds: 3}}.
+    MONGO_FP_DECLARE(rangeDeleterWTimeout);
 
     /**
      * Outline of the delete process:
@@ -121,9 +127,20 @@ namespace mongo {
         if (replSet) {
             Timer elapsedTime;
             ReplTime lastOpApplied = cc().getLastOp().asDate();
+
+            // Wait an hour for majority to replicate deletes. Failpoint can change the timeout.
+            int wtimeoutSeconds = 3600;
+
+            MONGO_FAIL_POINT_BLOCK(rangeDeleterWTimeout, fp) {
+                log() << "in fp block for rangeDeleterWTimeout" << endl;
+                const BSONObj& data = fp.getData();
+                wtimeoutSeconds = data["seconds"].numberInt();
+                log() << "wtimeoutseconds = " << wtimeoutSeconds << endl;
+            }
+
             while (!opReplicatedEnough(lastOpApplied,
                                        BSON("w" << "majority").firstElement())) {
-                if (elapsedTime.seconds() >= 3600) {
+                if (elapsedTime.seconds() >= wtimeoutSeconds) {
                     *errMsg = str::stream() << "moveChunk repl sync timed out after "
                                             << elapsedTime.seconds() << " seconds";
 
