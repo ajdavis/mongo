@@ -18,8 +18,7 @@ assert.commandWorked(
 var st = new ShardingTest({
     other: {
         rs: true,
-        rsOptions: {nodes: 2},
-        sync: true  // Make 3 config servers.
+        rsOptions: {nodes: 2}
     }
 });
 
@@ -180,26 +179,16 @@ assert.eq(1, secondaryCollection.count());
  * Config server down.
  ****************************************************************************/
 
-jsTest.log('Killing a config server.');
+jsTest.log('Killing config server.');
 MongoRunner.stopMongod(st.config0.port);
 assert(MongoRunner.isStopped(st.config0.port));
-assert(!MongoRunner.isStopped(st.config1.port));
-assert(!MongoRunner.isStopped(st.config2.port));
 
 jsTest.log('running cleanupOrphaned with config server down');
 var response = shardAdmin.runCommand({
-    cleanupOrphaned: coll.getFullName(),
-    secondaryThrottle: false
+    cleanupOrphaned: coll.getFullName()
 });
 
-// "moveChunk repl sync timed out"
 printjson(response);
-assert.commandFailed(response);
-// TODO
-//assert.neq(-1, response.errmsg.indexOf('timed out'), response.errmsg);
-
-
-jsTest.log('completed cleanupOrphaned with config server down');
-
+assert.commandWorked(response);
 
 st.stop();
