@@ -216,8 +216,6 @@ namespace mongo {
 
     #define MONGO_FAIL_POINT(symbol) MONGO_unlikely(symbol.shouldFail())
 
-    #define MONGO_FP_PAUSE_WHILE(symbol) while (MONGO_FAIL_POINT(symbol)) { sleepmillis(100); }
-
     /**
      * Macro for creating a fail point with block context. Also use this when
      * you want to access the data stored in the fail point.
