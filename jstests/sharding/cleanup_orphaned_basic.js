@@ -31,7 +31,7 @@ var mongos = st.s0;
 var mongosAdmin = mongos.getDB('admin');
 var dbName = 'foo';
 var collectionName = 'bar';
-var ns = dbname + '.' + collectionName;
+var ns = dbName + '.' + collectionName;
 var coll = mongos.getCollection(ns);
 
 // cleanupOrphaned fails against mongos ('no such command'): it must be run
@@ -44,9 +44,19 @@ assert.commandFailed(shardFooDB.runCommand({cleanupOrphaned: ns}));
 
 // Must be run on primary.
 var secondaryAdmin = st.rs0.getSecondary().getDB('admin');
-assert.commandFailed(secondaryAdmin.runCommand({cleanupOrphaned: ns}));
+var response = secondaryAdmin.runCommand({cleanupOrphaned: ns});
+print('cleanupOrphaned on secondary:');
+printjson(response);
+assert.commandFailed(response);
 
+// Bad ns.
+// TODO: re-enable?
 var shardAdmin = st.shard0.getDB('admin');
+//var badNS = ' \\/."*<>:|?';
+//response = shardAdmin.runCommand({cleanupOrphaned: badNS});
+//print('cleanupOrphaned on bad NS:');
+//printjson(response);
+//assert.commandFailed(response);
 
 /*****************************************************************************
  * Unsharded namespaces.
@@ -191,9 +201,5 @@ MongoRunner.stopMongod(st.config0.port);
 assert(MongoRunner.isStopped(st.config0.port));
 
 jsTest.log('Running cleanupOrphaned with config server down.');
-var response = shardAdmin.runCommand({cleanupOrphaned: ns});
-
-printjson(response);
-assert.commandWorked(response);
-
+assert.commandWorked(shardAdmin.runCommand({cleanupOrphaned: ns}));
 st.stop();

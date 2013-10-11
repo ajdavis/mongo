@@ -1,5 +1,6 @@
 //
-// Trivial tests of cleanupOrphaned command.
+// Trivial tests of cleanupOrphaned command permissions.
+// TODO: refactor with any general testing of commands and 2.6-era roles.
 //
 
 var st = new ShardingTest({
