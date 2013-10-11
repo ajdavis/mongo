@@ -45,10 +45,12 @@ assert.eq( 50, shard1Coll.count() );
 //
 
 pauseMoveChunkAtStep( st.shard0, 1 );
-var joinMoveChunk = moveChunkParallel( st.s0.host,
-                                       { _id : 0 },
-                                       coll.getFullName(),
-                                       shards[1]._id );
+var joinMoveChunk = moveChunkParallel(
+    staticMongod,
+    st.s0.host,
+    { _id : 0 },
+    coll.getFullName(),
+    shards[1]._id);
 
 waitForMoveChunkStep( mongos, 1 );
 // Donor has reloaded shard view.
