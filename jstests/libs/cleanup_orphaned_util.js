@@ -81,15 +81,22 @@ function testCleanupOrphaned(options) {
         _waitForDelete: true
     }));
 
-    // Half of the data is on each shard.
+    // Half of the data is on each shard:
+    // shard 0: [beginning, middle)
+    // shard 1:            [middle, end)
     assert.eq(keys.length / 2, shard0Coll.count());
     assert.eq(keys.length, coll.find().itcount());
 
     jsTest.log('Inserting some orphaned docs...');
 
     shard0Coll.insert(threeQuarters);
+
+    // I'll represent the orphan doc like {threeQuarters}, in this diagram:
+    //
+    // shard 0: [beginning, middle) {threeQuarters}
+    // shard 1:            [middle,                 end)
     assert.eq(null, shard0Coll.getDB().getLastError());
-    assert.neq(keys.length / 2, shard0Coll.count());
+    assert.eq(1 + keys.length / 2, shard0Coll.count());
 
     jsTest.log('Cleaning up orphaned data...');
 
@@ -111,24 +118,29 @@ function testCleanupOrphaned(options) {
         _waitForDelete: true
     }));
 
-    // 1/4 the data is on the first shard.
+    // 1/4 of the data is on the first shard.
+    // shard 0:            [threeQuarters,  middle)
+    // shard 1: [beginning, threeQuarters) [middle, end)
     assert.eq(Math.round(keys.length / 4), shard0Coll.count());
-    assert.eq(100, coll.find().itcount());
+    assert.eq(keys.length, coll.find().itcount());
 
     jsTest.log('Inserting some more orphaned docs...');
 
-    shard0Coll.insert(oneQuarter);
+    shard0Coll.insert(beginning);
     shard0Coll.insert(middle);
     assert.eq(null, shard0Coll.getDB().getLastError());
-    assert.neq(Math.round(keys.length / 4), shard0Coll.count());
+
+    // shard 0: {beginning} [threeQuarters,  middle) {middle}
+    // shard 1: [beginning,  threeQuarters)          [middle, end)
+    assert.eq(2 + Math.round(keys.length / 4), shard0Coll.count());
     assert.eq(100, coll.find().itcount());
 
     jsTest.log('Cleaning up more orphaned data...');
 
-    // Now there are 3 regions, not 2.
+    // Now cleanupOrphaned must iterate over 3 regions, not 2.
     cleanupOrphaned(st.shard0, coll.getFullName(), 3);
     assert.eq(Math.round(keys.length / 4), shard0Coll.count());
-    assert.eq(100, coll.find().itcount());
+    assert.eq(keys.length, coll.find().itcount());
 
     jsTest.log('DONE!');
 
