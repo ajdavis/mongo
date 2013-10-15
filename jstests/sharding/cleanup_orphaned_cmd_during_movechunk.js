@@ -14,8 +14,10 @@ var mongos = st.s0,
     admin = mongos.getDB( "admin" ),
     shards = mongos.getCollection( "config.shards" ).find().toArray(),
     coll = mongos.getCollection( "foo.bar" ),
-    shard0Coll = st.shard0.getCollection( coll + "" ),
-    shard1Coll = st.shard1.getCollection( coll + "" );
+    donor = st.shard0,
+    recipient = st.shard1,
+    donorColl = donor.getCollection( coll + "" ),
+    recipientColl = st.shard1.getCollection( coll + "" );
 
 // [minKey, 0) and [0, 50) are on shard 0. [50, maxKey) are on shard 1.
 assert( admin.runCommand({ enableSharding : coll.getDB() + "" }).ok );
@@ -31,20 +33,22 @@ assert( admin.runCommand({ moveChunk : coll + "",
 jsTest.log( "Inserting 100 docs into shard 0...." );
 for ( var i = -50; i < 50; i++ ) coll.insert({ _id : i });
 assert.eq( null, coll.getDB().getLastError() );
-assert.eq( 100, shard0Coll.count() );
+assert.eq( 100, donorColl.count() );
 
 jsTest.log( "Inserting 50 docs into shard 1...." );
 for ( i = 50; i < 100; i++ ) coll.insert({ _id : i });
 assert.eq( null, coll.getDB().getLastError() );
-assert.eq( 50, shard1Coll.count() );
+assert.eq( 50, recipientColl.count() );
 
 //
 // Start a moveChunk in the background. Move chunk [0, 50) from shard 0 to
-// shard 1. Pause it at each point in the donor's and recipient's work flows,
+// shard 1. Pause it at some points in the donor's and recipient's work flows,
 // and test cleanupOrphaned on shard 0 and shard 1.
 //
 
-pauseMoveChunkAtStep( st.shard0, 1 );
+jsTest.log( 'setting failpoint startedMoveChunk' );
+pauseMoveChunkAtStep( donor, moveChunkStepNames.startedMoveChunk );
+pauseMigrateAtStep( recipient, migrateStepNames.cloned );
 var joinMoveChunk = moveChunkParallel(
     staticMongod,
     st.s0.host,
@@ -52,77 +56,69 @@ var joinMoveChunk = moveChunkParallel(
     coll.getFullName(),
     shards[1]._id);
 
-waitForMoveChunkStep( mongos, 1 );
-// Donor has reloaded shard view.
+jsTest.log( 'waiting for startedMoveChunk' );
+waitForMoveChunkStep( donor, moveChunkStepNames.startedMoveChunk );
+jsTest.log( 'waiting for cloned' );
+waitForMigrateStep( recipient, migrateStepNames.cloned );
+jsTest.log( 'done waiting for cloned' );
+// Recipient has run _recvChunkStart and begun its migration thread; docs have
+// been cloned and chunk [0, 50) is noted as "pending" on recipient.
 
 // Create orphans.
-shard0Coll.insert([{ _id: 51 }]);
-assert.eq( null, shard0Coll.getDB().getLastError() );
-assert.eq( 101, shard0Coll.count() );
-shard1Coll.insert([{ _id: -1 }]);
-assert.eq( null, shard1Coll.getDB().getLastError() );
-assert.eq( 51, shard1Coll.count() );
+donorColl.insert([{ _id: 51 }]);
+assert.eq( null, donorColl.getDB().getLastError() );
+assert.eq( 101, donorColl.count() );
+recipientColl.insert([{ _id: -1 }]);
+assert.eq( null, recipientColl.getDB().getLastError() );
+assert.eq( 101, recipientColl.count() );
 
-cleanupOrphaned( st.shard0, coll + "", 2 );
-assert.eq( 100, shard0Coll.count() );
-cleanupOrphaned( st.shard1, coll + "", 2 );
-assert.eq( 50, shard1Coll.count() );
+cleanupOrphaned( donor, coll + "", 2 );
+assert.eq( 100, donorColl.count() );
+cleanupOrphaned( recipient, coll + "", 2 );
+assert.eq( 100, recipientColl.count() );
 
-proceedToMoveChunkStep( st.shard0, 2 );
-// Donor has updated chunks view and got distributed lock.
-
-// Create orphans.
-shard0Coll.insert([{ _id: 51 }]);
-assert.eq( null, shard0Coll.getDB().getLastError() );
-assert.eq( 101, shard0Coll.count() );
-shard1Coll.insert([{ _id: -1 }]);
-assert.eq( null, shard1Coll.getDB().getLastError() );
-assert.eq( 51, shard1Coll.count() );
-
-cleanupOrphaned( st.shard0, coll + "", 2 );
-assert.eq( 100, shard0Coll.count() );
-cleanupOrphaned( st.shard1, coll + "", 2 );
-assert.eq( 50, shard1Coll.count() );
-
-pauseMigrateAtStep( st.shard1, 1 );
-proceedToMoveChunkStep( st.shard0, 3 );
-// Recipient has run _recvChunkStart and begun its migration thread; docs are
-// being cloned and chunk [0, 50) is noted as "pending" on recipient.
-
-proceedToMigrateStep( st.shard1, 2 );
-proceedToMigrateStep( st.shard1, 3 );
-proceedToMigrateStep( st.shard1, 4 );
+proceedToMigrateStep( recipient, migrateStepNames.transferredMods );
 // Recipient is waiting for donor to call _recvChunkCommit.
 
-// Donor watches recipient's progress with _recvChunkStatus, finally calls
-// _recvChunkCommit.
-pauseMoveChunkAtStep( st.shard0, 6 );
-unpauseMoveChunkAtStep( st.shard0, 3 );
-proceedToMigrateStep( st.shard1, 5 );
+// Create orphans.
+donorColl.insert([{ _id: 51 }]);
+assert.eq( null, donorColl.getDB().getLastError() );
+assert.eq( 101, donorColl.count() );
+recipientColl.insert([{ _id: -1 }]);
+assert.eq( null, recipientColl.getDB().getLastError() );
+assert.eq( 101, recipientColl.count() );
+
+cleanupOrphaned( donor, coll + "", 2 );
+assert.eq( 100, donorColl.count() );
+cleanupOrphaned( recipient, coll + "", 2 );
+assert.eq( 100, recipientColl.count() );
+
+// Donor calls _recvChunkCommit.
+pauseMoveChunkAtStep( donor, moveChunkStepNames.committed );
+unpauseMoveChunkAtStep( donor, moveChunkStepNames.startedMoveChunk );
+unpauseMigrateAtStep( recipient, migrateStepNames.transferredMods );
+proceedToMigrateStep( recipient, migrateStepNames.done );
 
 // Create orphans.
-shard0Coll.insert([{ _id: 51 }]);
-assert.eq( null, shard0Coll.getDB().getLastError() );
-assert.eq( 101, shard0Coll.count() );
-shard1Coll.insert([{ _id: -1 }]);
-assert.eq( null, shard1Coll.getDB().getLastError() );
-assert.eq( 101, shard1Coll.count() );
+donorColl.insert([{ _id: 51 }]);
+assert.eq( null, donorColl.getDB().getLastError() );
+assert.eq( 101, donorColl.count() );
+recipientColl.insert([{ _id: -1 }]);
+assert.eq( null, recipientColl.getDB().getLastError() );
+assert.eq( 101, recipientColl.count() );
 
-// cleanupOrphaned removes migrated data from donor, which donor would
-// otherwise clean up itself, in post-move delete phase (step 6).
-cleanupOrphaned( st.shard0, coll + "", 2 );
-assert.eq( 50, shard0Coll.count() );
-cleanupOrphaned( st.shard1, coll + "", 2 );
-assert.eq( 100, shard1Coll.count() );
+// cleanupOrphaned removes migrated data from donor. The donor would
+// otherwise clean them up itself in post-move delete phase.
+cleanupOrphaned( donor, coll + "", 2 );
+assert.eq( 50, donorColl.count() );
+cleanupOrphaned( recipient, coll + "", 2 );
+assert.eq( 100, recipientColl.count() );
 
 // Let migration thread complete.
-unpauseMigrateAtStep( st.shard1, 5 );
-waitForMoveChunkStep( st.shard0, 6 );
-// Donor has done post-move delete.
-
-unpauseMoveChunkAtStep( st.shard0, 6 );
+unpauseMigrateAtStep( recipient, migrateStepNames.done );
+unpauseMoveChunkAtStep( donor, moveChunkStepNames.committed );
 joinMoveChunk();
-// Donor has returned from moveChunk command.
+// Donor has done post-move delete.
 
 jsTest.log( "DONE!" );
 st.stop();
