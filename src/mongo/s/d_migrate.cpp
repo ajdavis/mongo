@@ -91,13 +91,6 @@ namespace mongo {
 
     Tee* migrateLog = RamLog::get("migrate");
 
-    MONGO_FP_DECLARE(moveChunkHangAtStep1);
-    MONGO_FP_DECLARE(moveChunkHangAtStep2);
-    MONGO_FP_DECLARE(moveChunkHangAtStep3);
-    MONGO_FP_DECLARE(moveChunkHangAtStep4);
-    MONGO_FP_DECLARE(moveChunkHangAtStep5);
-    MONGO_FP_DECLARE(moveChunkHangAtStep6);
-
     class MoveTimingHelper {
     public:
         MoveTimingHelper( const string& where , const string& ns , BSONObj min , BSONObj max , int total , string& cmdErrmsg )
