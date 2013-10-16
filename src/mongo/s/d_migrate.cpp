@@ -85,8 +85,6 @@
 
 using namespace std;
 
-#define MONGO_FP_PAUSE_WHILE(symbol) while (MONGO_FAIL_POINT(symbol)) { sleepmillis(100); }
-
 namespace mongo {
 
     Tee* migrateLog = RamLog::get("migrate");
