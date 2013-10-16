@@ -72,23 +72,39 @@ assert.commandWorked(mongosAdmin.runCommand({
 
 assert.commandWorked(shardAdmin.runCommand({cleanupOrphaned: ns}));
 
+
+/*****************************************************************************
+ * Empty shard.
+ ****************************************************************************/
+
+response = st.shard1.getDB('admin').runCommand({cleanupOrphaned: ns});
+assert.commandWorked(response);
+assert.eq(null, response.stoppedAtKey);
+
 /*****************************************************************************
  * Bad startingFromKeys.
  ****************************************************************************/
 
-// cleanupOrphaned fails if startingFrom doesn't match shard key pattern.
 assert.commandWorked(mongosAdmin.runCommand({
     shardCollection: ns,
     key: {_id: 1}
 }));
 
-// Doesn't match number of keys.
+// startingFromKey of MaxKey.
+response = shardAdmin.runCommand({
+    cleanupOrphaned: ns,
+    startingFromKey: {_id: MaxKey}
+});
+assert.commandWorked(response);
+assert.eq(null, response.stoppedAtKey);
+
+// startingFromKey doesn't match number of fields in shard key.
 assert.commandFailed(shardAdmin.runCommand({
     cleanupOrphaned: ns,
     startingFromKey: {someKey: 'someValue', someOtherKey: 1}
 }));
 
-// Matches number of keys but not key name.
+// startingFromKey matches number of fields in shard key but not field names.
 // TODO: re-enable after SERVER-11104
 //assert.commandFailed(shardAdmin.runCommand({
 //    cleanupOrphaned: ns,
@@ -97,20 +113,19 @@ assert.commandFailed(shardAdmin.runCommand({
 
 var coll2 = mongos.getCollection('foo.baz');
 
-// cleanupOrphaned fails if startingFrom doesn't match shard key pattern.
 assert.commandWorked(mongosAdmin.runCommand({
     shardCollection: coll2.getFullName(),
     key: {a:1, b:1}
 }));
 
 
-// Doesn't match number of keys.
+// startingFromKey doesn't match number of fields in shard key.
 assert.commandFailed(shardAdmin.runCommand({
     cleanupOrphaned: coll2.getFullName(),
     startingFromKey: {someKey: 'someValue'}
 }));
 
-// Matches number of keys but not key name.
+// startingFromKey matches number of fields in shard key but not field names.
 // TODO: re-enable after SERVER-11104
 //assert.commandFailed(shardAdmin.runCommand({
 //    cleanupOrphaned: coll2.getFullName(),
