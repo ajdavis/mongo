@@ -234,7 +234,7 @@ namespace mongo {
 
     BSONField<string> CleanupOrphanedCommand::nsField( "cleanupOrphaned" );
     BSONField<BSONObj> CleanupOrphanedCommand::startingFromKeyField( "startingFromKey" );
-    BSONField<bool> CleanupOrphanedCommand::secondaryThrottleField( "secondaryThrottle" );
+    BSONField<bool> CleanupOrphanedCommand::secondaryThrottleField( "secondaryThrottleField" );
     BSONField<BSONObj> CleanupOrphanedCommand::stoppedAtKeyField( "stoppedAtKey" );
 
     MONGO_INITIALIZER(RegisterCleanupOrphanedCommand)(InitializerContext* context) {
