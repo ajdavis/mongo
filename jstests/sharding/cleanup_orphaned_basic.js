@@ -72,7 +72,6 @@ assert.commandWorked(mongosAdmin.runCommand({
 
 assert.commandWorked(shardAdmin.runCommand({cleanupOrphaned: ns}));
 
-
 /*****************************************************************************
  * Empty shard.
  ****************************************************************************/
@@ -81,14 +80,23 @@ response = st.shard1.getDB('admin').runCommand({cleanupOrphaned: ns});
 assert.commandWorked(response);
 assert.eq(null, response.stoppedAtKey);
 
-/*****************************************************************************
- * Bad startingFromKeys.
- ****************************************************************************/
-
 assert.commandWorked(mongosAdmin.runCommand({
     shardCollection: ns,
     key: {_id: 1}
 }));
+
+st.shard1.getCollection(ns).insert({});  // orphan
+assert.eq(null, st.shard1.getDB(dbName).getLastError());
+assert.eq(1, st.shard1.getCollection(ns).count());
+response = st.shard1.getDB('admin').runCommand({cleanupOrphaned: ns});
+assert.commandWorked(response);
+assert.eq(null, response.stoppedAtKey);
+assert.eq(0, st.shard1.getCollection(ns).count()); // TODO: huh?
+
+/*****************************************************************************
+ * Bad startingFromKeys.
+ ****************************************************************************/
+
 
 // startingFromKey of MaxKey.
 response = shardAdmin.runCommand({
@@ -193,13 +201,10 @@ assert.commandWorked(secondaryAdmin.runCommand({
 // Once replication catches up, orphan will be gone from secondary.
 var secondaryCollection = st.rs0.getSecondary().getCollection(ns);
 
-// Wait up to 10 seconds for replication to resume and remove orphan from
-// secondary.
-for (var i = 0; i < 100; i++) {
-    if (secondaryCollection.count() != 1) { sleep(100 /* milliseconds */); }
-}
-
-assert.eq(1, secondaryCollection.count());
+// Wait for replication to resume and remove orphan from secondary.
+assert.soon(function() {
+    return 1 == secondaryCollection.count();
+}, "Replication didn't delete orphan from secondary");
 
 // Restore default timeout for range deleter.
 assert.commandWorked(shardAdmin.runCommand({
