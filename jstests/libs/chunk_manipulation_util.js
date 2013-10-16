@@ -10,20 +10,51 @@ load( './jstests/libs/test_background_ops.js' );
 //                 "MongoRunner.runMongod({})" to make one.
 // mongosURL:      Like 'localhost:27017'.
 // findCriteria:   Like { _id: 1 }, passed to moveChunk's "find" option.
+// bounds:         Array of two documents that specify the lower and upper
+//                 shard key values of a chunk to move. Specify either the
+//                 bounds field or the find field but not both.
 // ns:             Like 'dbName.collectionName'.
 // toShardId:      Like 'shard0001'.
 //
 // Returns a join function; call it to wait for moveChunk to complete.
 // 
-function moveChunkParallel( staticMongod, mongosURL, findCriteria, ns, toShardId ) {
-    function runMoveChunk( mongosURL, findCriteria, ns, toShardId ) {
+function moveChunkParallel(
+    staticMongod,
+    mongosURL,
+    findCriteria,
+    bounds,
+    ns,
+    toShardId) {
+
+    assert((findCriteria || bounds) && !(findCriteria && bounds),
+           'Specify either findCriteria or bounds, but not both.');
+
+    function runMoveChunk(
+        mongosURL,
+        findCriteria,
+        bounds,
+        ns,
+        toShardId) {
+
+        assert(mongosURL && ns && toShardId, 'Missing arguments.');
+        assert((findCriteria || bounds) && !(findCriteria && bounds),
+               'Specify either findCriteria or bounds, but not both.');
+
         var mongos = new Mongo( mongosURL ),
             admin = mongos.getDB( 'admin' ),
-            result = admin.runCommand({ moveChunk : ns,
-                                        find : findCriteria,
-                                        to : toShardId,
-                                        _waitForDelete : true });
+            cmd = { moveChunk : ns };
 
+        if (findCriteria) {
+            cmd.find = findCriteria;
+        } else {
+            cmd.bounds = bounds;
+        }
+
+        cmd.to = toShardId;
+        cmd._waitForDelete = true;
+
+        printjson(cmd);
+        var result = admin.runCommand(cmd);
         printjson( result );
         assert( result.ok );
     }
@@ -31,7 +62,7 @@ function moveChunkParallel( staticMongod, mongosURL, findCriteria, ns, toShardId
     // Return the join function.
     return startParallelOps(
         staticMongod, runMoveChunk,
-        [ mongosURL, findCriteria, ns, toShardId ] );
+        [ mongosURL, findCriteria, bounds, ns, toShardId ] );
 }
 
 // moveChunk starts at step 0 and proceeds to 1 (it has *finished* parsing
@@ -101,6 +132,12 @@ function waitForMoveChunkStep( shardConnection, stepNumber ) {
     assert( stepNumber >= 1);
     assert( stepNumber <= 6 );
 
+    var msg = (
+        'moveChunk on ' + shardConnection.shardName
+        + ' never reached step "'
+        + numberToName( moveChunkStepNames, stepNumber )
+        + '".');
+
     assert.soon( function() {
         var in_progress = admin.currentOp().inprog;
         for ( var i = 0; i < in_progress.length; ++i ) {
@@ -111,7 +148,7 @@ function waitForMoveChunkStep( shardConnection, stepNumber ) {
         }
 
         return false;
-    });
+    }, msg);
 }
 
 var migrateStepNames = {
@@ -165,6 +202,12 @@ function waitForMigrateStep( shardConnection, stepNumber ) {
     assert( stepNumber >= 1);
     assert( stepNumber <= 5 );
 
+    var msg = (
+        'Migrate thread on ' + shardConnection.shardName
+        + ' never reached step "'
+        + numberToName( migrateStepNames, stepNumber )
+        + '".');
+
     assert.soon( function() {
         // verbose = True so we see the migration thread.
         var in_progress = admin.currentOp(true).inprog;
@@ -176,5 +219,5 @@ function waitForMigrateStep( shardConnection, stepNumber ) {
         }
 
         return false;
-    });
+    }, msg);
 }
