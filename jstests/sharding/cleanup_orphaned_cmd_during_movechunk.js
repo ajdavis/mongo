@@ -21,7 +21,7 @@ var mongos = st.s0,
     donorColl = donor.getCollection(ns),
     recipientColl = st.shard1.getCollection(ns);
 
-// Three chunks of 10 documents each, with ids -20, -18, -16, ..., 38. 
+// Three chunks of 10 documents each, with ids -20, -18, -16, ..., 38.
 // Donor:     [minKey, 0) [0, 20)
 // Recipient:                [20, maxKey)
 assert(admin.runCommand({enableSharding: dbName}).ok);
