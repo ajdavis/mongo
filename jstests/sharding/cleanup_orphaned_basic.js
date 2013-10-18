@@ -2,9 +2,6 @@
 // Basic tests of cleanupOrphaned.
 //
 
-load('./jstests/libs/chunk_manipulation_util.js');
-load('./jstests/libs/cleanup_orphaned_util.js');
-
 /*****************************************************************************
  * Unsharded mongod.
  ****************************************************************************/

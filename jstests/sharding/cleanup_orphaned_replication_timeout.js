@@ -2,9 +2,6 @@
 // Tests cleanupOrphaned with replication halted.
 //
 
-load('./jstests/libs/chunk_manipulation_util.js');
-load('./jstests/libs/cleanup_orphaned_util.js');
-
 var st = new ShardingTest({
     other: {
         rs: true,
