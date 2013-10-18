@@ -85,13 +85,16 @@ assert.commandWorked(mongosAdmin.runCommand({
     key: {_id: 1}
 }));
 
-st.shard1.getCollection(ns).insert({});  // orphan
+// Collection's home is shard0, there are no chunks assigned to shard1.
+st.shard1.getCollection(ns).insert({});
 assert.eq(null, st.shard1.getDB(dbName).getLastError());
 assert.eq(1, st.shard1.getCollection(ns).count());
 response = st.shard1.getDB('admin').runCommand({cleanupOrphaned: ns});
 assert.commandWorked(response);
 assert.eq(null, response.stoppedAtKey);
-assert.eq(0, st.shard1.getCollection(ns).count()); // TODO: huh?
+assert.eq(
+    0, st.shard1.getCollection(ns).count(),
+    "cleanupOrphaned didn't delete orphan on empty shard.");
 
 /*****************************************************************************
  * Bad startingFromKeys.
