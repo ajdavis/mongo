@@ -57,6 +57,7 @@ var joinMoveChunk = moveChunkParallel(
     staticMongod,
     st.s0.host,
     {_id: 0},
+    null,
     coll.getFullName(),
     shards[1]._id);
 
