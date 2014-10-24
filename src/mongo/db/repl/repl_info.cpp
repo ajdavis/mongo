@@ -51,10 +51,11 @@
 namespace mongo {
 namespace repl {
 
-    void appendReplicationInfo(OperationContext* txn, BSONObjBuilder& result, int level) {
+    void appendReplicationInfo(OperationContext* txn, const BSONObj& hostTagsFilter, BSONObjBuilder& result, int level) {
         ReplicationCoordinator* replCoord = getGlobalReplicationCoordinator();
         if (replCoord->getSettings().usingReplSets()) {
             IsMasterResponse isMasterResponse;
+            isMasterResponse.setHostTagsFilter(hostTagsFilter);
             replCoord->fillIsMasterForReplSet(&isMasterResponse);
             result.appendElements(isMasterResponse.toBSON());
             return;
@@ -143,7 +144,7 @@ namespace repl {
             BSONObjBuilder result;
 
             OperationContextImpl txn;   // XXX?
-            appendReplicationInfo(&txn, result, level);
+            appendReplicationInfo(&txn, BSONObj(), result, level);
             return result.obj();
         }
     } replicationInfoServerStatus;
@@ -193,7 +194,18 @@ namespace repl {
             if ( cmdObj["forShell"].trueValue() )
                 lastError.disableForCommand();
 
-            appendReplicationInfo(txn, result, 0);
+            BSONElement hostTagsFilter = cmdObj["tags"];
+
+            // TODO: more validation, factor it from mongos.
+            uassert(28536,
+                    mongoutils::str::stream() << "'tags' must be an array, not " <<
+                        typeName(hostTagsFilter.type()),
+                    hostTagsFilter.type() == mongo::Array || hostTagsFilter.eoo());
+
+            appendReplicationInfo(txn,
+                                  hostTagsFilter.eoo() ? BSONObj() : hostTagsFilter.Obj(),
+                                  result,
+                                  0);
 
             result.appendNumber("maxBsonObjectSize", BSONObjMaxUserSize);
             result.appendNumber("maxMessageSizeBytes", MaxMessageSizeBytes);

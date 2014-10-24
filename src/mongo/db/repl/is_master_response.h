@@ -31,6 +31,7 @@
 #include <string>
 #include <vector>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/platform/unordered_map.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/time_support.h"
@@ -152,6 +153,12 @@ namespace repl {
         void setMe(const HostAndPort& me);
 
         /**
+        * Set a list of tag sets by which to filter secondaries and arbiters.
+        * Helps clients monitor a subset of a very large replica set.
+        */
+        void setHostTagsFilter(const BSONObj& hostTagsFilter);
+
+        /**
          * Marks _configSet as false, which will cause future calls to toBSON/addToBSON to ignore
          * all other member variables and output a hardcoded response indicating that we have no
          * valid replica set config.
@@ -197,6 +204,7 @@ namespace repl {
         bool _tagsSet;
         HostAndPort _me;
         bool _meSet;
+        BSONObj _hostTagsFilter;
 
         // If _configSet is false this means we don't have a valid repl set config, so toBSON
         // will return a set of hardcoded values that indicate this.
