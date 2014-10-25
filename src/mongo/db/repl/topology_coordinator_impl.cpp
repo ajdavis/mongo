@@ -1347,7 +1347,10 @@ namespace {
         response->setIsMaster(myState.primary());
         response->setIsSecondary(myState.secondary());
 
-        {
+        const MemberConfig* curPrimary = _currentPrimaryMember();
+        const ReplicaSetTagConfig tagConfig = _currentConfig.getTagConfig();
+
+        { // TODO: ensure empty array if no hosts match.
             for (ReplicaSetConfig::MemberIterator it = _currentConfig.membersBegin();
                     it != _currentConfig.membersEnd(); ++it) {
                 if (it->isHidden() || it->getSlaveDelay().total_seconds() > 0) {
@@ -1355,7 +1358,14 @@ namespace {
                 }
 
                 if (it->isElectable()) {
-                    response->addHost(it->getHostAndPort());
+                    HostAndPort host = it->getHostAndPort();
+
+                    /* Filter out secondaries that don't match the response's tags filter. */
+                    bool hostIsPrimary = curPrimary && host == curPrimary->getHostAndPort();
+                    if (hostIsPrimary ||
+                            it->matchesTags(tagConfig, response->getHostTagsFilter())) {
+                        response->addHost(host);
+                    }
                 }
                 else if (it->isArbiter()) {
                     response->addArbiter(it->getHostAndPort());
@@ -1366,7 +1376,6 @@ namespace {
             }
         }
 
-        const MemberConfig* curPrimary = _currentPrimaryMember();
         if (curPrimary) {
             response->setPrimary(curPrimary->getHostAndPort());
         }
@@ -1387,7 +1396,6 @@ namespace {
         if (!selfConfig.shouldBuildIndexes()) {
             response->setShouldBuildIndexes(false);
         }
-        const ReplicaSetTagConfig tagConfig = _currentConfig.getTagConfig();
         if (selfConfig.hasTags(tagConfig)) {
             for (MemberConfig::TagIterator tag = selfConfig.tagsBegin();
                     tag != selfConfig.tagsEnd(); ++tag) {

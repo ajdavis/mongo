@@ -107,6 +107,8 @@ namespace repl {
 
         const HostAndPort& getMe() const { return _me; }
 
+        const BSONObj& getHostTagsFilter() { return _hostTagsFilter; }
+
         /**
          * If false, calls to toBSON/addToBSON will ignore all other fields and add a specific
          * message to indicate that we have no replica set config.

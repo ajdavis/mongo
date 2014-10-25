@@ -144,6 +144,12 @@ namespace repl {
         bool hasTags(const ReplicaSetTagConfig& tagConfig) const;
 
         /**
+         * Returns true if this MemberConfig matches an array of tag sets. A member tagged with
+         * {dc: 'sf'}, plus any other tags, matches the hostTagsFilter [{dc: 'ny'}, {dc: 'sf'}].
+         */
+        bool matchesTags(const ReplicaSetTagConfig& tagConfig, const BSONObj& hostTagsFilter) const;
+
+        /**
          * Gets a begin iterator over the tags for this member.
          */
         TagIterator tagsBegin() const { return _tags.begin(); }
@@ -164,6 +170,13 @@ namespace repl {
         BSONObj toBSON(const ReplicaSetTagConfig& tagConfig) const;
 
     private:
+        void _clearTags();
+        void _setTag(ReplicaSetTagConfig* tagConfig, const StringData& key,
+                     const StringData& value);
+
+        /* Does this MemberConfig match a single tag set, like {dc: 'sf'}? */
+        bool _matchesTagSet(const ReplicaSetTagConfig& tagConfig,
+                            const BSONObj&requiredTags) const;
 
         int _id;
         HostAndPort _host;
@@ -174,6 +187,7 @@ namespace repl {
         bool _hidden;          // if set, don't advertise to drivers in isMaster.
         bool _buildIndexes;    // if false, do not create any non-_id indexes
         std::vector<ReplicaSetTag> _tags;  // tagging for data center, rack, etc.
+        std::unordered_map<std::string, std::string> _tagsMap;
     };
 
 }  // namespace repl

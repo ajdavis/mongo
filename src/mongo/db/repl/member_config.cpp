@@ -199,7 +199,7 @@ namespace {
         //
         // Parse "tags" field.
         //
-        _tags.clear();
+        _clearTags();
         BSONElement tagsElement;
         status = bsonExtractTypedField(mcfg, kTagsFieldName, Object, &tagsElement);
         if (status.isOK()) {
@@ -210,8 +210,7 @@ namespace {
                                   tag.fieldName() << " field has non-string value of type " <<
                                   typeName(tag.type()));
                 }
-                _tags.push_back(tagConfig->makeTag(tag.fieldNameStringData(),
-                                                   tag.valueStringData()));
+                _setTag(tagConfig, tag.fieldNameStringData(), tag.valueStringData());
             }
         }
         else if (ErrorCodes::NoSuchKey != status) {
@@ -225,17 +224,18 @@ namespace {
         // Add a voter tag if this non-arbiter member votes; use _id for uniquity.
         const std::string id = str::stream() << _id;
         if (_isVoter && !_arbiterOnly) {
-            _tags.push_back(tagConfig->makeTag(kInternalVoterTagName, id));
+            // TODO: obviously need setTag()
+            _setTag(tagConfig, kInternalVoterTagName, id);
         }
 
         // Add an electable tag if this member is electable.
         if (isElectable()) {
-            _tags.push_back(tagConfig->makeTag(kInternalElectableTagName, id));
+            _setTag(tagConfig, kInternalElectableTagName, id);
         }
 
         // Add a tag for generic counting of this node.
         if (!_arbiterOnly) {
-            _tags.push_back(tagConfig->makeTag(kInternalAllTagName, id));
+            _setTag(tagConfig, kInternalAllTagName, id);
         }
 
         return Status::OK();
@@ -290,6 +290,21 @@ namespace {
         return false;
     }
 
+    /* Helper method TODO: comment */
+
+    bool MemberConfig::matchesTags(const ReplicaSetTagConfig& tagConfig,
+                                   const BSONObj& hostTagsFilter) const {
+        if (hostTagsFilter.isEmpty()) { return true; }
+
+        // TODO: validate hostTagsFilter type, factor validation and matching with mongos's read prefs.
+        BSONForEach(requiredTags, hostTagsFilter) {
+            if (_matchesTagSet(tagConfig, requiredTags.Obj()))
+                return true;
+        }
+
+        return false;
+    }
+
     BSONObj MemberConfig::toBSON(const ReplicaSetTagConfig& tagConfig) const {
         BSONObjBuilder configBuilder;
         configBuilder.append("_id", _id);
@@ -317,5 +332,35 @@ namespace {
         return configBuilder.obj();
     }
 
+    bool MemberConfig::_matchesTagSet(const ReplicaSetTagConfig &tagConfig,
+                                      const BSONObj &requiredTags) const {
+        BSONForEach(requiredTag, requiredTags) {
+            std::string requiredKey = requiredTag.fieldName();
+
+            // Replica set tags are all string-valued.
+            std::string requiredValue = requiredTag.String();
+
+            // Member doesn't match required tags if any of the required tags is missing from
+            // its config, or if the required value doesn't match the member's value for that
+            // tag. E.g., a member with no tags doesn't match {dc: 'sf'}, and neither does a
+            // member tagged {dc: 'ny'}.
+            std::unordered_map<std::string, std::string>::const_iterator found = _tagsMap.find(requiredKey);
+            if (found == _tagsMap.end() || found->second != requiredValue) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void MemberConfig::_clearTags() {
+        _tags.clear();
+        _tagsMap.clear();
+    }
+
+    void MemberConfig::_setTag(ReplicaSetTagConfig* tagConfig, const StringData& key,
+                               const StringData& value) {
+        _tags.push_back(tagConfig->makeTag(key, value));
+        _tagsMap[key.toString()] = value.toString();
+    }
 }  // namespace repl
 }  // namespace mongo
