@@ -51,7 +51,10 @@
 namespace mongo {
 namespace repl {
 
-    void appendReplicationInfo(OperationContext* txn, const BSONObj& hostTagsFilter, BSONObjBuilder& result, int level) {
+    void appendReplicationInfo(OperationContext* txn,
+                               const BSONObj& hostTagsFilter,
+                               BSONObjBuilder& result,
+                               int level) {
         ReplicationCoordinator* replCoord = getGlobalReplicationCoordinator();
         if (replCoord->getSettings().usingReplSets()) {
             IsMasterResponse isMasterResponse;

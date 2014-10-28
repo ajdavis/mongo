@@ -171,11 +171,14 @@ namespace repl {
 
     private:
         void _clearTags();
-        void _setTag(ReplicaSetTagConfig* tagConfig, const StringData& key,
+        void _setTag(ReplicaSetTagConfig* tagConfig,
+                     const StringData& key,
                      const StringData& value);
 
         /**
-         * Does this MemberConfig match a single tag set, like {dc: 'sf'}?
+         * Return true if this MemberConfig matches a single tag set.
+         * E.g., if this member is tagged {dc: 'sf', rack: '2'} it matches requiredTags {dc: 'sf'}.
+         * Always true if requiredTags is empty.
          */
         bool _matchesTagSet(const ReplicaSetTagConfig& tagConfig,
                             const BSONObj&requiredTags) const;

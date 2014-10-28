@@ -297,7 +297,6 @@ namespace {
                                    const BSONObj& hostTagsFilter) const {
         if (hostTagsFilter.isEmpty()) { return true; }
 
-        // TODO: validate hostTagsFilter type, factor validation and matching with mongos's read prefs.
         BSONForEach(requiredTags, hostTagsFilter) {
             if (_matchesTagSet(tagConfig, requiredTags.Obj()))
                 return true;
@@ -333,9 +332,6 @@ namespace {
         return configBuilder.obj();
     }
 
-    //
-    // Does this MemberConfig match a single tag set, like {dc: 'sf'}?
-    //
     bool MemberConfig::_matchesTagSet(const ReplicaSetTagConfig &tagConfig,
                                       const BSONObj &requiredTags) const {
         BSONForEach(requiredTag, requiredTags) {
@@ -348,7 +344,8 @@ namespace {
             // its config, or if the required value doesn't match the member's value for that
             // tag. E.g., a member with no tags doesn't match {dc: 'sf'}, and neither does a
             // member tagged {dc: 'ny'}.
-            std::unordered_map<std::string, std::string>::const_iterator found = _tagsMap.find(requiredKey);
+            typedef std::unordered_map<std::string, std::string>::const_iterator MapIterator;
+            MapIterator found = _tagsMap.find(requiredKey);
             if (found == _tagsMap.end() || found->second != requiredValue) {
                 return false;
             }
@@ -361,7 +358,8 @@ namespace {
         _tagsMap.clear();
     }
 
-    void MemberConfig::_setTag(ReplicaSetTagConfig* tagConfig, const StringData& key,
+    void MemberConfig::_setTag(ReplicaSetTagConfig* tagConfig,
+                               const StringData& key,
                                const StringData& value) {
         _tags.push_back(tagConfig->makeTag(key, value));
         _tagsMap[key.toString()] = value.toString();

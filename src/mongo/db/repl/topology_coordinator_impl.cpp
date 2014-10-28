@@ -1347,7 +1347,8 @@ namespace {
         response->setIsMaster(myState.primary());
         response->setIsSecondary(myState.secondary());
 
-        const MemberConfig* curPrimary = _currentPrimaryMember();
+        // May be NULL.
+        const MemberConfig*currentPrimary = _currentPrimaryMember();
         const ReplicaSetTagConfig tagConfig = _currentConfig.getTagConfig();
 
         {
@@ -1362,7 +1363,7 @@ namespace {
 
                     // If ismaster is called with a "tags" parameter, filter out secondaries that
                     // don't match the tags.
-                    bool hostIsPrimary = curPrimary && host == curPrimary->getHostAndPort();
+                    bool hostIsPrimary = currentPrimary && host == currentPrimary->getHostAndPort();
                     if (hostIsPrimary ||
                             it->matchesTags(tagConfig, response->getHostTagsFilter())) {
                         response->addHost(host);
@@ -1377,8 +1378,8 @@ namespace {
             }
         }
 
-        if (curPrimary) {
-            response->setPrimary(curPrimary->getHostAndPort());
+        if (currentPrimary) {
+            response->setPrimary(currentPrimary->getHostAndPort());
         }
 
         const MemberConfig& selfConfig = _currentConfig.getMemberAt(_selfIndex);
