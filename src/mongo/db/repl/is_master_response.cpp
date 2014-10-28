@@ -38,8 +38,6 @@
 #include "mongo/util/mongoutils/str.h"
 
 namespace mongo {
-    using logger::LogComponent;
-
 namespace repl {
 namespace {
 
