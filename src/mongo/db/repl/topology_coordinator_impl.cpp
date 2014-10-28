@@ -1350,7 +1350,7 @@ namespace {
         const MemberConfig* curPrimary = _currentPrimaryMember();
         const ReplicaSetTagConfig tagConfig = _currentConfig.getTagConfig();
 
-        { // TODO: ensure empty array if no hosts match.
+        {
             for (ReplicaSetConfig::MemberIterator it = _currentConfig.membersBegin();
                     it != _currentConfig.membersEnd(); ++it) {
                 if (it->isHidden() || it->getSlaveDelay().total_seconds() > 0) {
@@ -1360,7 +1360,8 @@ namespace {
                 if (it->isElectable()) {
                     HostAndPort host = it->getHostAndPort();
 
-                    /* Filter out secondaries that don't match the response's tags filter. */
+                    // If ismaster is called with a "tags" parameter, filter out secondaries that
+                    // don't match the tags.
                     bool hostIsPrimary = curPrimary && host == curPrimary->getHostAndPort();
                     if (hostIsPrimary ||
                             it->matchesTags(tagConfig, response->getHostTagsFilter())) {

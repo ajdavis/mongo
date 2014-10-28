@@ -196,7 +196,6 @@ namespace repl {
 
             BSONElement hostTagsFilter = cmdObj["tags"];
 
-            // TODO: more validation, factor it from mongos.
             uassert(28536,
                     mongoutils::str::stream() << "'tags' must be an array, not " <<
                         typeName(hostTagsFilter.type()),

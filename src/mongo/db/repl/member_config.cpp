@@ -224,7 +224,6 @@ namespace {
         // Add a voter tag if this non-arbiter member votes; use _id for uniquity.
         const std::string id = str::stream() << _id;
         if (_isVoter && !_arbiterOnly) {
-            // TODO: obviously need setTag()
             _setTag(tagConfig, kInternalVoterTagName, id);
         }
 
@@ -290,8 +289,10 @@ namespace {
         return false;
     }
 
-    /* Helper method TODO: comment */
-
+    //
+    // Returns true if this MemberConfig matches an array of tag sets. A member tagged with
+    // {dc: 'sf'}, plus any other tags, matches the hostTagsFilter [{dc: 'ny'}, {dc: 'sf'}].
+    //
     bool MemberConfig::matchesTags(const ReplicaSetTagConfig& tagConfig,
                                    const BSONObj& hostTagsFilter) const {
         if (hostTagsFilter.isEmpty()) { return true; }
@@ -332,6 +333,9 @@ namespace {
         return configBuilder.obj();
     }
 
+    //
+    // Does this MemberConfig match a single tag set, like {dc: 'sf'}?
+    //
     bool MemberConfig::_matchesTagSet(const ReplicaSetTagConfig &tagConfig,
                                       const BSONObj &requiredTags) const {
         BSONForEach(requiredTag, requiredTags) {

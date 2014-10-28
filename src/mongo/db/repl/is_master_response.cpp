@@ -37,8 +37,6 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/util/mongoutils/str.h"
 
-#include "mongo/util/log.h"
-
 namespace mongo {
     using logger::LogComponent;
 
@@ -435,9 +433,6 @@ namespace {
     }
 
     void IsMasterResponse::setHostTagsFilter(const BSONObj& hostTagsFilter) {
-        MONGO_LOG_COMPONENT(1, LogComponent::kReplication)
-            << "setHostTagsFilter: " << hostTagsFilter << endl;
-
         _hostTagsFilter = hostTagsFilter.copy();
     }
 

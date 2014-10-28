@@ -174,7 +174,9 @@ namespace repl {
         void _setTag(ReplicaSetTagConfig* tagConfig, const StringData& key,
                      const StringData& value);
 
-        /* Does this MemberConfig match a single tag set, like {dc: 'sf'}? */
+        /**
+         * Does this MemberConfig match a single tag set, like {dc: 'sf'}?
+         */
         bool _matchesTagSet(const ReplicaSetTagConfig& tagConfig,
                             const BSONObj&requiredTags) const;
 
