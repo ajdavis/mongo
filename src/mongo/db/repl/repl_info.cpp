@@ -205,12 +205,13 @@ namespace repl {
                 appendReplicationInfo(txn, NULL, result, 0);
             }
             else {
-                uassert(28536,
+                uassert(ErrorCodes::BadValue,
                         mongoutils::str::stream() << "'tags' must be an array, not " <<
                                 typeName(hostTagsFilter.type()),
                         hostTagsFilter.type() == mongo::Array);
 
                 BSONObj filterObj = hostTagsFilter.Obj();
+                _validateHostTagsFilter(filterObj);
                 appendReplicationInfo(txn, &filterObj, result, 0);
             }
 
@@ -221,6 +222,29 @@ namespace repl {
             result.append("maxWireVersion", maxWireVersion);
             result.append("minWireVersion", minWireVersion);
             return true;
+        }
+
+    private:
+        void _validateHostTagsFilter(const BSONObj& filterObj) {
+            uassert(ErrorCodes::BadValue,
+                    "'tags' must be absent or non-empty ",
+                    !filterObj.isEmpty());
+
+            BSONForEach(tagSet, filterObj) {
+                uassert(ErrorCodes::BadValue,
+                        mongoutils::str::stream() << "'tags' must contain documents, not " <<
+                                typeName(tagSet.type()),
+                        tagSet.type() == mongo::Object);
+
+                BSONObj tagSetObj = tagSet.Obj();
+                BSONForEach(tag, tagSetObj) {
+                    uassert(ErrorCodes::BadValue,
+                            mongoutils::str::stream() << "Tag values must be strings, not " <<
+                                    typeName(tag.type()),
+                            tag.type() == mongo::String);
+                }
+            }
+
         }
     } cmdismaster;
 
