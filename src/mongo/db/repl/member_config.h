@@ -191,8 +191,7 @@ namespace repl {
         Seconds _slaveDelay;
         bool _hidden;          // if set, don't advertise to drivers in isMaster.
         bool _buildIndexes;    // if false, do not create any non-_id indexes
-        std::vector<ReplicaSetTag> _tags;  // tagging for data center, rack, etc.
-        std::unordered_map<std::string, std::string> _tagsMap;
+        std::vector<ReplicaSetTag> _tags;  // tagging for data center, rack, etc. Kept sorted.
     };
 
 }  // namespace repl

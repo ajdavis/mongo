@@ -77,6 +77,16 @@ namespace {
 
 }  // namespace
 
+    // Arbitrary stable comparison of tags from the same ReplicaSetTagConfig, to sort and search.
+    bool compareTags(const ReplicaSetTag &a, const ReplicaSetTag &b) {
+        if (a.getKeyIndex() != b.getKeyIndex()) {
+            return a.getKeyIndex() < b.getKeyIndex();
+        }
+        else {
+            return a.getValueIndex() < b.getValueIndex();
+        }
+    }
+
     Status MemberConfig::initialize(const BSONObj& mcfg, ReplicaSetTagConfig* tagConfig) {
         Status status = bsonCheckOnlyHasFields(
             "replica set member configuration", mcfg, kLegalMemberConfigFieldNames);
@@ -237,6 +247,7 @@ namespace {
             _setTag(tagConfig, kInternalAllTagName, id);
         }
 
+        std::sort(_tags.begin(), _tags.end(), &compareTags);
         return Status::OK();
     }
 
@@ -334,35 +345,32 @@ namespace {
 
     bool MemberConfig::_matchesTagSet(const ReplicaSetTagConfig &tagConfig,
                                       const BSONObj &requiredTags) const {
-        BSONForEach(requiredTag, requiredTags) {
-            std::string requiredKey = requiredTag.fieldName();
-
+        BSONForEach(requiredTagElem, requiredTags) {
             // Replica set tags are all string-valued.
-            std::string requiredValue = requiredTag.String();
+            ReplicaSetTag requiredTag = tagConfig.findTag(requiredTagElem.fieldName(),
+                                                          requiredTagElem.String());
+
+            // No member in the replica set config is tagged with this key and value.
+            if (!requiredTag.isValid()) return false;
 
             // Member doesn't match required tags if any of the required tags is missing from
             // its config, or if the required value doesn't match the member's value for that
             // tag. E.g., a member with no tags doesn't match {dc: 'sf'}, and neither does a
             // member tagged {dc: 'ny'}.
-            typedef std::unordered_map<std::string, std::string>::const_iterator MapIterator;
-            MapIterator found = _tagsMap.find(requiredKey);
-            if (found == _tagsMap.end() || found->second != requiredValue) {
+            if (!std::binary_search(_tags.begin(), _tags.end(), requiredTag, &compareTags))
                 return false;
-            }
         }
         return true;
     }
 
     void MemberConfig::_clearTags() {
         _tags.clear();
-        _tagsMap.clear();
     }
 
     void MemberConfig::_setTag(ReplicaSetTagConfig* tagConfig,
                                const StringData& key,
                                const StringData& value) {
         _tags.push_back(tagConfig->makeTag(key, value));
-        _tagsMap[key.toString()] = value.toString();
     }
 }  // namespace repl
 }  // namespace mongo
