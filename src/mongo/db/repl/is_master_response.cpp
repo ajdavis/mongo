@@ -430,8 +430,8 @@ namespace {
         _me = me;
     }
 
-    void IsMasterResponse::setHostTagsFilter(const BSONObj& hostTagsFilter) {
-        _hostTagsFilter = hostTagsFilter.copy();
+    void IsMasterResponse::setHostTagsFilter(const BSONObj* hostTagsFilter) {
+        _hostTagsFilter = hostTagsFilter ? hostTagsFilter->copy() : BSONObj();
     }
 
     void IsMasterResponse::markAsNoConfig() { _configSet = false; }

@@ -155,10 +155,13 @@ namespace repl {
         void setMe(const HostAndPort& me);
 
         /**
-        * Set a list of tag sets by which to filter secondaries and arbiters.
-        * Helps clients monitor a subset of a very large replica set.
+        * Set optional list of tag sets by which to filter secondaries and arbiters.
+        *
+        * For example, the filter [{dc: 'ny'}, {dc: 'sf'}] matches secondaries and arbiters tagged
+        * with 'ny' or 'sf' for the 'dc' key. Helps clients monitor a subset of a very large
+        * replica set.
         */
-        void setHostTagsFilter(const BSONObj& hostTagsFilter);
+        void setHostTagsFilter(const BSONObj* hostTagsFilter);
 
         /**
          * Marks _configSet as false, which will cause future calls to toBSON/addToBSON to ignore

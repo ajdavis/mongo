@@ -1347,9 +1347,9 @@ namespace {
         response->setIsMaster(myState.primary());
         response->setIsSecondary(myState.secondary());
 
-        // May be NULL.
-        const MemberConfig*currentPrimary = _currentPrimaryMember();
-        const ReplicaSetTagConfig tagConfig = _currentConfig.getTagConfig();
+        // A NULL pointer if no primary is known.
+        const MemberConfig* currentPrimary = _currentPrimaryMember();
+        const ReplicaSetTagConfig& tagConfig = _currentConfig.getTagConfig();
 
         {
             for (ReplicaSetConfig::MemberIterator it = _currentConfig.membersBegin();
@@ -1359,7 +1359,7 @@ namespace {
                 }
 
                 if (it->isElectable()) {
-                    HostAndPort host = it->getHostAndPort();
+                    const HostAndPort& host = it->getHostAndPort();
 
                     // If ismaster is called with a "tags" parameter, filter out secondaries that
                     // don't match the tags.

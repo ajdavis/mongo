@@ -52,7 +52,7 @@ namespace mongo {
 namespace repl {
 
     void appendReplicationInfo(OperationContext* txn,
-                               const BSONObj& hostTagsFilter,
+                               const BSONObj* hostTagsFilter,
                                BSONObjBuilder& result,
                                int level) {
         ReplicationCoordinator* replCoord = getGlobalReplicationCoordinator();
@@ -147,7 +147,7 @@ namespace repl {
             BSONObjBuilder result;
 
             OperationContextImpl txn;   // XXX?
-            appendReplicationInfo(&txn, BSONObj(), result, level);
+            appendReplicationInfo(&txn, NULL, result, level);
             return result.obj();
         }
     } replicationInfoServerStatus;
@@ -197,17 +197,22 @@ namespace repl {
             if ( cmdObj["forShell"].trueValue() )
                 lastError.disableForCommand();
 
+            /* 'tags' is an optional parameter, a list of tag sets by which to filter secondaries
+             * and arbiters in the host list in our response, like [{dc: 'ny'}, {dc: 'sf'}].
+             */
             BSONElement hostTagsFilter = cmdObj["tags"];
+            if (hostTagsFilter.eoo()) {
+                appendReplicationInfo(txn, NULL, result, 0);
+            }
+            else {
+                uassert(28536,
+                        mongoutils::str::stream() << "'tags' must be an array, not " <<
+                                typeName(hostTagsFilter.type()),
+                        hostTagsFilter.type() == mongo::Array);
 
-            uassert(28536,
-                    mongoutils::str::stream() << "'tags' must be an array, not " <<
-                        typeName(hostTagsFilter.type()),
-                    hostTagsFilter.type() == mongo::Array || hostTagsFilter.eoo());
-
-            appendReplicationInfo(txn,
-                                  hostTagsFilter.eoo() ? BSONObj() : hostTagsFilter.Obj(),
-                                  result,
-                                  0);
+                BSONObj filterObj = hostTagsFilter.Obj();
+                appendReplicationInfo(txn, &filterObj, result, 0);
+            }
 
             result.appendNumber("maxBsonObjectSize", BSONObjMaxUserSize);
             result.appendNumber("maxMessageSizeBytes", MaxMessageSizeBytes);
