@@ -3,7 +3,6 @@
 Import("env")
 
 env = env.Clone()
-env.InjectThirdParty(libraries=['unwind'])
 
 # This needs to use its own env to tell scons to suppress scanning the .tpl.h and .tpl.cpp inputs
 # for #includes since they aren't directly preprocessed. Scons will still scan the generated files
@@ -113,15 +112,13 @@ env.CppUnitTest(
     ],
 )
 
-
-env.CppUnitTest(
+unwindTestEnv = env.Clone()
+unwindTestEnv.InjectThirdParty(libraries=['unwind'])
+unwindTestEnv.CppUnitTest(
     target=[
         'unwind_test',
     ],
     source=[
         'unwind_test.cpp',
-    ],
-    LIBDEPS=[
-        'secure_allocator',
     ],
 )

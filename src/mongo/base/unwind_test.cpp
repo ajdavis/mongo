@@ -14,6 +14,8 @@
 
 namespace mongo {
 
+// Must be a named namespace so the functions we want to unwind through have external linkage.
+// Without that, the compiler optimizes them away.
 namespace unwind_test_detail {
 
 struct Context {
@@ -85,6 +87,9 @@ TEST(Unwind, Demangled) {
     Context ctx{&s};
     f<20>(ctx);
     std::cerr << "backtrace: [[[\n" << s << "]]]\n";
+
+    // Check that these function names appear in the trace, in order.
+    // There will of course be characters between them but ignore that.
     const std::string frames[] = {
         "mongo::unwind_test_detail::F<2>::operator()(mongo::unwind_test_detail::Context&)",   //
         "mongo::unwind_test_detail::F<20>::operator()(mongo::unwind_test_detail::Context&)",  //
@@ -99,5 +104,4 @@ TEST(Unwind, Demangled) {
 }
 
 }  // namespace unwind_test_detail
-
 }  // namespace mongo
