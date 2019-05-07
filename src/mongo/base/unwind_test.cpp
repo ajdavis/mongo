@@ -7,7 +7,7 @@
 
 #include <fmt/printf.h>
 
-#define UNW_LOCAL_ONLY
+// #define UNW_LOCAL_ONLY  // shouldn't need this at all
 #include <libunwind.h>
 
 #include "mongo/unittest/unittest.h"
