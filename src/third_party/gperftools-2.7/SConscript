@@ -102,7 +102,7 @@ env.Append(CPPPATH=[gperftools_platform.Dir("internal/src"),
                     gperftools_root.Dir("dist/src")])
 
 # propagates to consumers that Inject (depend on) gperftools.
-env.SetForConsumers(CPPPATH=[gperftools_platform.Dir("include")])
+env.RegisterConsumerModifications(CPPPATH=[gperftools_platform.Dir("include")])
 
 def removeIfPresent(lst, item):
     try:

@@ -218,11 +218,11 @@ else:
     unwindEnv.InjectThirdParty(libraries=['unwind'])
     unwindEnv.InjectMongoIncludePaths()
 
-    def setForConsumers(env, **kwargs):
+    def registerConsumerModifications(env, **kwargs):
         for k,v in kwargs.items():
             thirdPartyEnvironmentModifications['unwind'][k] = v
 
-    unwindEnv.AddMethod(setForConsumers, 'SetForConsumers')
+    unwindEnv.AddMethod(registerConsumerModifications, 'RegisterConsumerModifications')
     unwindEnv.SConscript('unwind/SConscript', exports={'env' : unwindEnv})
 
     print("third_party/unwind modifications:",
@@ -463,10 +463,10 @@ if gperftoolsEnv['MONGO_ALLOCATOR'] in ["tcmalloc", "tcmalloc-experimental"]:
         gperftoolsEnv.InjectThirdParty(libraries=['gperftools'])
         # Allow gperftools to determine its own consumer-side include/ dirs.
         # Needed because those are in a platform-specific subdirectory.
-        def setForConsumers(env, **kwargs):
+        def registerConsumerModifications(env, **kwargs):
             for k,v in kwargs.items():
                 thirdPartyEnvironmentModifications['gperftools'][k] = v
-        gperftoolsEnv.AddMethod(setForConsumers, 'SetForConsumers')
+        gperftoolsEnv.AddMethod(registerConsumerModifications, 'RegisterConsumerModifications')
         gperftoolsEnv.SConscript(
             'gperftools' + gperftoolsSuffix + '/SConscript',
             exports={'env' : gperftoolsEnv})

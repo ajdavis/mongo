@@ -17,6 +17,7 @@ env = env.Clone()
 
 unwind_root = env.Dir("#/src/third_party/unwind")
 unwind_platform = unwind_root.Dir("platform/${TARGET_OS}_${TARGET_ARCH}")
+unwind_src_dir = "dist/src"
 
 env.Append(
     CCFLAGS = [
@@ -35,14 +36,19 @@ if env.ToolchainIs('clang'):
 env.Append(
     CPPPATH = [
         unwind_platform.Dir("build/include"),
+
         unwind_root.Dir("dist/src"),
         unwind_root.Dir("dist/include"),
         unwind_root.Dir("dist/include/tdep-${TARGET_ARCH}"),
+
+        # env.Dir("dist/src"),
+        # env.Dir("dist/include"),
+        # env.Dir("dist/include/tdep-${TARGET_ARCH}"),
     ])
 
 # propagates to consumers that Inject (depend on) unwind.
-env.SetForConsumers(CPPPATH=[unwind_platform.Dir("install/include")],
-                    LIBS=['lzma'])
+env.RegisterConsumerModifications(CPPPATH=[unwind_platform.Dir("install/include")],
+                                  LIBS=['lzma'])
 
 env.Append(
     LIBS=['lzma']
@@ -54,8 +60,6 @@ env.Append(
         '_GNU_SOURCE',
     ])
 
-unwind_src_dir = "dist/src"
-
 env.Library(
     target = 'unwind-dwarf-common',
     source = [unwind_src_dir + '/dwarf/' + f for f in [
@@ -65,7 +69,7 @@ env.Library(
 env.Library(
     target = 'unwind-dwarf-local',
     source = [unwind_src_dir + '/dwarf/' + f for f in [
-        'Lexpr.c'
+        'Lexpr.c',
         'Lfde.c',
         'Lparser.c',
         'Lpe.c',
