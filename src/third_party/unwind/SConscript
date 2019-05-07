@@ -4,6 +4,9 @@ Import("env")
 Import("has_option")
 Import("debugBuild")
 
+import os
+print('env.Dir(".") = {} => {}'.format(str(env.Dir(".")), os.path.realpath(".")))
+
 # https://www.nongnu.org/libunwind/man/libunwind(3).html#section_1
 # For local unwinding (introspection, which is all we want), include
 # libunwind.h and link with '-lunwind'. We only need to build enough
@@ -15,17 +18,17 @@ Import("debugBuild")
 
 env = env.Clone()
 
-unwind_root = env.Dir("#/src/third_party/unwind")
+unwind_root = env.Dir(".").srcnode() # /src/third_party/unwind
 unwind_platform = unwind_root.Dir("platform/${TARGET_OS}_${TARGET_ARCH}")
 unwind_src_dir = "dist/src"
 
 env.Append(
-    CCFLAGS = [
-        '-g',
-        '-O2',
+    CCFLAGS=[
+        #'-g',
+        #'-O2',
         '-fexceptions',
-        '-Wall',
-        '-Wsign-compare',
+        #'-Wall',
+        #'-Wsign-compare',
         '-Wno-unused-result',
     ]
 )
@@ -34,7 +37,7 @@ if env.ToolchainIs('clang'):
     env.Append(CCFLAGS=['-Wno-header-guard'])
 
 env.Append(
-    CPPPATH = [
+    CPPPATH=[
         unwind_platform.Dir("build/include"),
 
         unwind_root.Dir("dist/src"),
@@ -55,20 +58,20 @@ env.Append(
 )
 
 env.Append(
-    CPPDEFINES = [
+    CPPDEFINES=[
         'HAVE_CONFIG_H',
         '_GNU_SOURCE',
     ])
 
 env.Library(
-    target = 'unwind-dwarf-common',
-    source = [unwind_src_dir + '/dwarf/' + f for f in [
+    target='unwind-dwarf-common',
+    source=[unwind_src_dir + '/dwarf/' + f for f in [
         'global.c',
     ]])
 
 env.Library(
-    target = 'unwind-dwarf-local',
-    source = [unwind_src_dir + '/dwarf/' + f for f in [
+    target='unwind-dwarf-local',
+    source=[unwind_src_dir + '/dwarf/' + f for f in [
         'Lexpr.c',
         'Lfde.c',
         'Lparser.c',
@@ -81,17 +84,17 @@ env.Library(
     ])
 
 env.Library(
-    target = 'unwind-elf64',
-    source = [unwind_src_dir + '/' + f for f in [
+    target='unwind-elf64',
+    source=[unwind_src_dir + '/' + f for f in [
         'elf64.c',
     ]],
-    LIBS = [
+    LIBS=[
         'lzma',
     ])
 
 env.Library(
-    target = 'unwind',
-    source = [unwind_src_dir + '/' + f for f in [
+    target='unwind',
+    source=[unwind_src_dir + '/' + f for f in [
         'os-linux.c',
         'mi/init.c',
         'mi/flush_cache.c',
