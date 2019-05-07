@@ -84,6 +84,20 @@ env.Library(
     ])
 
 env.Library(
+    target = 'unwind-dwarf-generic',
+    source = [unwind_src_dir + '/dwarf/' + f for f in [
+        'Gexpr.c',
+        'Gfde.c',
+        'Gparser.c',
+        'Gpe.c',
+        'Gfind_proc_info-lsb.c',
+        'Gfind_unwind_table.c',
+    ]],
+    LIBDEPS=[
+        'unwind-dwarf-common',
+    ])
+
+env.Library(
     target='unwind-elf64',
     source=[unwind_src_dir + '/' + f for f in [
         'elf64.c',
@@ -165,20 +179,6 @@ env.Library(
         'c',
         'gcc_s',
         'lzma',
-    ])
-
-env.Library(
-    target = 'unwind-dwarf-generic',
-    source = [unwind_src_dir + '/' + f for f in [
-        'dwarf/Gexpr.c',
-        'dwarf/Gfde.c',
-        'dwarf/Gparser.c',
-        'dwarf/Gpe.c',
-        'dwarf/Gfind_proc_info-lsb.c',
-        'dwarf/Gfind_unwind_table.c',
-    ]],
-    LIBDEPS=[
-        'unwind-dwarf-common',
     ])
 
 env.Library(
