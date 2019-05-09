@@ -5,7 +5,6 @@ Import("has_option")
 Import("debugBuild")
 
 import os
-print('env.Dir(".") = {} => {}'.format(str(env.Dir(".")), os.path.realpath(".")))
 
 # https://www.nongnu.org/libunwind/man/libunwind(3).html#section_1
 # For local unwinding (introspection, which is all we want), include
@@ -17,6 +16,8 @@ print('env.Dir(".") = {} => {}'.format(str(env.Dir(".")), os.path.realpath("."))
 # Rules derived from the libtool --mode=link lines produced by Make.
 
 env = env.Clone()
+
+# print('env.Dir(".") = {} => {}'.format(str(env.Dir(".")), os.path.realpath(".")))
 
 unwind_root = env.Dir(".").srcnode() # /src/third_party/unwind
 unwind_platform = unwind_root.Dir("platform/${TARGET_OS}_${TARGET_ARCH}")
@@ -51,6 +52,7 @@ env.Append(
 
 # propagates to consumers that Inject (depend on) unwind.
 env.RegisterConsumerModifications(CPPPATH=[unwind_platform.Dir("install/include")],
+                                  CDEFINES=['UNW_LOCAL_ONLY'],
                                   LIBS=['lzma'])
 
 env.Append(
@@ -67,7 +69,10 @@ env.Library(
     target='unwind-dwarf-common',
     source=[unwind_src_dir + '/dwarf/' + f for f in [
         'global.c',
-    ]])
+    ]],
+    LIBDEPS_TAGS=[
+        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
+    ])
 
 env.Library(
     target='unwind-dwarf-local',
@@ -81,6 +86,9 @@ env.Library(
     ]],
     LIBDEPS=[
         'unwind-dwarf-common'
+    ],
+    LIBDEPS_TAGS=[
+        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
     ])
 
 env.Library(
@@ -95,6 +103,9 @@ env.Library(
     ]],
     LIBDEPS=[
         'unwind-dwarf-common',
+    ],
+    LIBDEPS_TAGS=[
+        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
     ])
 
 env.Library(
@@ -104,6 +115,9 @@ env.Library(
     ]],
     LIBS=[
         'lzma',
+    ],
+    LIBDEPS_TAGS=[
+        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
     ])
 
 env.Library(
@@ -175,10 +189,13 @@ env.Library(
         'unwind-dwarf-local',
         'unwind-elf64',
     ],
-    LIBS = [
+    LIBS=[
         'c',
         'gcc_s',
         'lzma',
+    ],
+    LIBDEPS_TAGS=[
+        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
     ])
 
 env.Library(
