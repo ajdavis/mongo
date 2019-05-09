@@ -97,7 +97,7 @@ unwind_sources = [
 ]
 
 env.Append(
-    CPPFLAGS = [
+    CPPFLAGS=[
         '-g',
         '-O2',
         '-fexceptions',
@@ -105,11 +105,10 @@ env.Append(
         '-Wsign-compare',
         '-Wno-header-guard',
         '-Wno-unused-result',
-    ]
-)
+    ])
 
 env.Append(
-    CPPPATH = [
+    CPPPATH=[
         unwind_platform.Dir("build/include"),
         unwind_root.Dir("dist/src"),
         unwind_root.Dir("dist/include"),
@@ -123,11 +122,10 @@ env.RegisterConsumerModifications(
     LIBS=['lzma'])
 
 env.Append(
-    LIBS=['lzma']
-)
+    LIBS=['lzma'])
 
 env.Append(
-    CPPDEFINES = [
+    CPPDEFINES=[
         'HAVE_CONFIG_H',
         '_GNU_SOURCE',
     ])
@@ -135,5 +133,5 @@ env.Append(
 unwind_src_dir = env.Dir("dist/src")
 unwind_sources_files = [unwind_src_dir.File(f) for f in unwind_sources]
 env.Library(
-    target = 'unwind',
-    source = unwind_sources_files)
+    target='unwind',
+    source=unwind_sources_files)

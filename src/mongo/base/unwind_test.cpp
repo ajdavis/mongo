@@ -34,11 +34,13 @@
 #include <cxxabi.h>
 #include <sstream>
 
+#include <fmt/format.h>
 #include <fmt/printf.h>
 
 // #define UNW_LOCAL_ONLY  // shouldn't need this at all
 #include <libunwind.h>
 
+#include "mongo/stdx/functional.h"
 #include "mongo/unittest/unittest.h"
 
 namespace mongo {
@@ -47,11 +49,10 @@ namespace mongo {
 // Without that, the compiler optimizes them away.
 namespace unwind_test_detail {
 
-struct Context {
-    std::string* s;
-};
+using namespace fmt::literals;
 
-void trace(std::ostringstream& oss) {
+std::string trace() {
+    std::string out;
     unw_cursor_t cursor;
     unw_context_t context;
 
@@ -65,13 +66,12 @@ void trace(std::ostringstream& oss) {
         if (pc == 0) {
             break;
         }
-        oss << fmt::sprintf("0x%lx:", pc);
+        out += "0x{:x}:"_format(pc);
         char sym[256];
         char* name = sym;
         int err;
         if ((err = unw_get_proc_name(&cursor, sym, sizeof(sym), &offset)) != 0) {
-            oss << fmt::sprintf(" -- error: unable to obtain symbol name for this frame: %d\n",
-                                err);
+            out += " -- error: unable to obtain symbol name for this frame: {:d}\n"_format(err);
             continue;
         }
         name = sym;
@@ -80,55 +80,56 @@ void trace(std::ostringstream& oss) {
         if ((demangled_name = abi::__cxa_demangle(sym, nullptr, nullptr, &status))) {
             name = demangled_name;
         }
-        oss << fmt::sprintf(" (%s+0x%lx)\n", name, offset);
+        out += " ({:s}+0x{:x})\n"_format(name, offset);
         if (name != sym) {
             free(name);  // allocated by abi::__cxa_demangle
         }
     }
+    return out;
 }
 
-template <int N>
-struct F {
-    __attribute__((noinline)) void operator()(Context& ctx) const;
+struct Context {
+    std::vector<stdx::function<void(Context&)>> plan;
+    std::string s;
 };
 
+// Disable clang-format for the "if constexpr"
+// clang-format off
 template <int N>
-void F<N>::operator()(Context& ctx) const {
-    asm volatile("");  // prevent inlining
-    F<N - 1>{}(ctx);
+void callNext(Context& ctx) {
+    if constexpr(N == 0) {
+        ctx.s = trace();
+    } else {
+        ctx.plan[N - 1](ctx);
+    }
+    asm volatile("");  // Forces compiler to invoke next plan with `call` instead of `jmp`.
 }
-
-template <>
-void F<0>::operator()(Context& ctx) const {
-    asm volatile("");  // prevent inlining
-    std::ostringstream oss;
-    trace(oss);
-    *ctx.s = oss.str();
-}
-
-template <size_t N>
-void f(Context& ctx) {
-    F<N>{}(ctx);
-}
+// clang-format on
 
 TEST(Unwind, Demangled) {
-    std::string s;
-    Context ctx{&s};
-    f<20>(ctx);
-    std::cerr << "backtrace: [[[\n" << s << "]]]\n";
-
+    // Trickery with std::vector<stdx::function> is to hide from the optimizer.
+    Context ctx{{
+        callNext<0>, callNext<1>, callNext<2>, callNext<3>, callNext<4>, callNext<5>,
+    }};
+    ctx.plan.back()(ctx);
+    if (1) {
+        std::cerr << "backtrace: [[[\n" << ctx.s << "]]]\n";
+    }
     // Check that these function names appear in the trace, in order.
     // There will of course be characters between them but ignore that.
     const std::string frames[] = {
-        "mongo::unwind_test_detail::F<2>::operator()(mongo::unwind_test_detail::Context&)",   //
-        "mongo::unwind_test_detail::F<20>::operator()(mongo::unwind_test_detail::Context&)",  //
-        "mongo::unittest::Test::run()",                                                       //
-        "main",                                                                               //
+        "void mongo::unwind_test_detail::callNext<0>(mongo::unwind_test_detail::Context&)",
+        "void mongo::unwind_test_detail::callNext<1>(mongo::unwind_test_detail::Context&)",
+        "void mongo::unwind_test_detail::callNext<2>(mongo::unwind_test_detail::Context&)",
+        "void mongo::unwind_test_detail::callNext<3>(mongo::unwind_test_detail::Context&)",
+        "void mongo::unwind_test_detail::callNext<4>(mongo::unwind_test_detail::Context&)",
+        "void mongo::unwind_test_detail::callNext<5>(mongo::unwind_test_detail::Context&)",
+        "main",
     };
     size_t pos = 0;
     for (const auto& expected : frames) {
-        pos = s.find(expected, pos);
-        ASSERT_NE(pos, s.npos) << s;
+        pos = ctx.s.find(expected, pos);
+        ASSERT_NE(pos, ctx.s.npos) << ctx.s;
     }
 }
 
