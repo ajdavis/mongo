@@ -13,8 +13,9 @@ Import("debugBuild")
 
 env = env.Clone()
 
-unwind_root = env.Dir("#/src/third_party/unwind")
+unwind_root = env.Dir(".").srcnode()
 unwind_platform = unwind_root.Dir("platform/${TARGET_OS}_${TARGET_ARCH}")
+unwind_src_dir = env.Dir("dist/src")
 
 unwind_sources = [
     'mi/backtrace.c',
@@ -97,15 +98,13 @@ unwind_sources = [
 ]
 
 env.Append(
-    CPPFLAGS=[
-        '-g',
-        '-O2',
+    CCFLAGS=[
         '-fexceptions',
-        '-Wall',
-        '-Wsign-compare',
-        '-Wno-header-guard',
         '-Wno-unused-result',
     ])
+
+if env.ToolchainIs('clang'):
+    env.Append(CCFLAGS=['-Wno-header-guard'])
 
 env.Append(
     CPPPATH=[
@@ -130,7 +129,6 @@ env.Append(
         '_GNU_SOURCE',
     ])
 
-unwind_src_dir = env.Dir("dist/src")
 unwind_sources_files = [unwind_src_dir.File(f) for f in unwind_sources]
 env.Library(
     target='unwind',
