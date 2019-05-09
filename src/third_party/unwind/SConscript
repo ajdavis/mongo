@@ -104,6 +104,7 @@ env.Append(
         '-Wall',
         '-Wsign-compare',
         '-Wno-header-guard',
+        '-Wno-unused-result',
     ]
 )
 
@@ -116,8 +117,10 @@ env.Append(
     ])
 
 # propagates to consumers that Inject (depend on) unwind.
-env.SetForConsumers(CPPPATH=[unwind_platform.Dir("install/include")],
-                    LIBS=['lzma'])
+env.RegisterConsumerModifications(
+    CPPPATH=[unwind_platform.Dir("install/include")],
+    CPPDEFINES=['UNW_LOCAL_ONLY'],
+    LIBS=['lzma'])
 
 env.Append(
     LIBS=['lzma']
