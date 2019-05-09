@@ -4,245 +4,133 @@ Import("env")
 Import("has_option")
 Import("debugBuild")
 
-import os
-
 # https://www.nongnu.org/libunwind/man/libunwind(3).html#section_1
 # For local unwinding (introspection, which is all we want), include
 # libunwind.h and link with '-lunwind'. We only need to build enough
 # for that to work.
 #
 # Limited to linux_x86_64 right now.
-#
-# Rules derived from the libtool --mode=link lines produced by Make.
 
 env = env.Clone()
 
-# print('env.Dir(".") = {} => {}'.format(str(env.Dir(".")), os.path.realpath(".")))
-
-unwind_root = env.Dir(".").srcnode() # /src/third_party/unwind
+unwind_root = env.Dir("#/src/third_party/unwind")
 unwind_platform = unwind_root.Dir("platform/${TARGET_OS}_${TARGET_ARCH}")
-unwind_src_dir = "dist/src"
+
+unwind_sources = [
+    'mi/backtrace.c',
+    'mi/dyn-cancel.c',
+    'mi/dyn-info-list.c',
+    'mi/dyn-register.c',
+    'mi/flush_cache.c',
+    'mi/init.c',
+    'mi/Ldestroy_addr_space.c',
+    'mi/Ldyn-extract.c',
+    'mi/Lfind_dynamic_proc_info.c',
+    'mi/Lget_accessors.c',
+    'mi/Lget_fpreg.c',
+    'mi/Lget_proc_info_by_ip.c',
+    'mi/Lget_proc_name.c',
+    'mi/Lget_reg.c',
+    'mi/Lput_dynamic_unwind_info.c',
+    'mi/Lset_cache_size.c',
+    'mi/Lset_caching_policy.c',
+    'mi/Lset_fpreg.c',
+    'mi/Lset_reg.c',
+    'mi/mempool.c',
+    'mi/_ReadSLEB.c',
+    'mi/_ReadULEB.c',
+    'mi/strerror.c',
+    'os-linux.c',
+    'unwind/Backtrace.c',
+    'unwind/DeleteException.c',
+    'unwind/FindEnclosingFunction.c',
+    'unwind/ForcedUnwind.c',
+    'unwind/GetBSP.c',
+    'unwind/GetCFA.c',
+    'unwind/GetDataRelBase.c',
+    'unwind/GetGR.c',
+    'unwind/GetIP.c',
+    'unwind/GetIPInfo.c',
+    'unwind/GetLanguageSpecificData.c',
+    'unwind/GetRegionStart.c',
+    'unwind/GetTextRelBase.c',
+    'unwind/RaiseException.c',
+    'unwind/Resume.c',
+    'unwind/Resume_or_Rethrow.c',
+    'unwind/SetGR.c',
+    'unwind/SetIP.c',
+    #
+    # x86_64
+    'x86_64/is_fpreg.c',
+    'x86_64/Lapply_reg_state.c',
+    'x86_64/Lcreate_addr_space.c',
+    'x86_64/Lget_proc_info.c',
+    'x86_64/Lget_save_loc.c',
+    'x86_64/Lglobal.c',
+    'x86_64/Linit.c',
+    'x86_64/Linit_local.c',
+    'x86_64/Linit_remote.c',
+    'x86_64/Los-linux.c',
+    'x86_64/Lregs.c',
+    'x86_64/Lreg_states_iterate.c',
+    'x86_64/Lresume.c',
+    'x86_64/Lstash_frame.c',
+    'x86_64/Lstep.c',
+    'x86_64/Ltrace.c',
+    'x86_64/regname.c',
+    'x86_64/getcontext.S',
+    'x86_64/setcontext.S',
+    #
+    # orig in unwind-elf64
+    'elf64.c',
+    #
+    # orig in unwind-dwarf-local
+    'dwarf/Lexpr.c',
+    'dwarf/Lfde.c',
+    'dwarf/Lfind_proc_info-lsb.c',
+    'dwarf/Lfind_unwind_table.c',
+    'dwarf/Lparser.c',
+    'dwarf/Lpe.c',
+    #
+    # orig in unwind-dwarf-common
+    'dwarf/global.c',
+]
 
 env.Append(
-    CCFLAGS=[
-        #'-g',
-        #'-O2',
+    CPPFLAGS = [
+        '-g',
+        '-O2',
         '-fexceptions',
-        #'-Wall',
-        #'-Wsign-compare',
-        '-Wno-unused-result',
+        '-Wall',
+        '-Wsign-compare',
+        '-Wno-header-guard',
     ]
 )
 
-if env.ToolchainIs('clang'):
-    env.Append(CCFLAGS=['-Wno-header-guard'])
-
 env.Append(
-    CPPPATH=[
+    CPPPATH = [
         unwind_platform.Dir("build/include"),
-
         unwind_root.Dir("dist/src"),
         unwind_root.Dir("dist/include"),
         unwind_root.Dir("dist/include/tdep-${TARGET_ARCH}"),
-
-        # env.Dir("dist/src"),
-        # env.Dir("dist/include"),
-        # env.Dir("dist/include/tdep-${TARGET_ARCH}"),
     ])
 
 # propagates to consumers that Inject (depend on) unwind.
-env.RegisterConsumerModifications(CPPPATH=[unwind_platform.Dir("install/include")],
-                                  CDEFINES=['UNW_LOCAL_ONLY'],
-                                  LIBS=['lzma'])
+env.SetForConsumers(CPPPATH=[unwind_platform.Dir("install/include")],
+                    LIBS=['lzma'])
 
 env.Append(
     LIBS=['lzma']
 )
 
 env.Append(
-    CPPDEFINES=[
+    CPPDEFINES = [
         'HAVE_CONFIG_H',
         '_GNU_SOURCE',
     ])
 
+unwind_src_dir = env.Dir("dist/src")
+unwind_sources_files = [unwind_src_dir.File(f) for f in unwind_sources]
 env.Library(
-    target='unwind-dwarf-common',
-    source=[unwind_src_dir + '/dwarf/' + f for f in [
-        'global.c',
-    ]],
-    LIBDEPS_TAGS=[
-        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
-    ])
-
-env.Library(
-    target='unwind-dwarf-local',
-    source=[unwind_src_dir + '/dwarf/' + f for f in [
-        'Lexpr.c',
-        'Lfde.c',
-        'Lparser.c',
-        'Lpe.c',
-        'Lfind_proc_info-lsb.c',
-        'Lfind_unwind_table.c',
-    ]],
-    LIBDEPS=[
-        'unwind-dwarf-common'
-    ],
-    LIBDEPS_TAGS=[
-        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
-    ])
-
-env.Library(
-    target = 'unwind-dwarf-generic',
-    source = [unwind_src_dir + '/dwarf/' + f for f in [
-        'Gexpr.c',
-        'Gfde.c',
-        'Gparser.c',
-        'Gpe.c',
-        'Gfind_proc_info-lsb.c',
-        'Gfind_unwind_table.c',
-    ]],
-    LIBDEPS=[
-        'unwind-dwarf-common',
-    ],
-    LIBDEPS_TAGS=[
-        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
-    ])
-
-env.Library(
-    target='unwind-elf64',
-    source=[unwind_src_dir + '/' + f for f in [
-        'elf64.c',
-    ]],
-    LIBS=[
-        'lzma',
-    ],
-    LIBDEPS_TAGS=[
-        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
-    ])
-
-env.Library(
-    target='unwind',
-    source=[unwind_src_dir + '/' + f for f in [
-        'os-linux.c',
-        'mi/init.c',
-        'mi/flush_cache.c',
-        'mi/mempool.c',
-        'mi/strerror.c',
-        'x86_64/is_fpreg.c',
-        'x86_64/regname.c',
-        'x86_64/Los-linux.c',
-        'mi/_ReadULEB.c',
-        'mi/_ReadSLEB.c',
-        'mi/backtrace.c',
-        'mi/dyn-cancel.c',
-        'mi/dyn-info-list.c',
-        'mi/dyn-register.c',
-        'mi/Ldyn-extract.c',
-        'mi/Lfind_dynamic_proc_info.c',
-        'mi/Lget_accessors.c',
-        'mi/Lget_proc_info_by_ip.c',
-        'mi/Lget_proc_name.c',
-        'mi/Lput_dynamic_unwind_info.c',
-        'mi/Ldestroy_addr_space.c',
-        'mi/Lget_reg.c',
-        'mi/Lset_reg.c',
-        'mi/Lget_fpreg.c',
-        'mi/Lset_fpreg.c',
-        'mi/Lset_caching_policy.c',
-        'mi/Lset_cache_size.c',
-        'unwind/Backtrace.c',
-        'unwind/DeleteException.c',
-        'unwind/FindEnclosingFunction.c',
-        'unwind/ForcedUnwind.c',
-        'unwind/GetBSP.c',
-        'unwind/GetCFA.c',
-        'unwind/GetDataRelBase.c',
-        'unwind/GetGR.c',
-        'unwind/GetIP.c',
-        'unwind/GetLanguageSpecificData.c',
-        'unwind/GetRegionStart.c',
-        'unwind/GetTextRelBase.c',
-        'unwind/RaiseException.c',
-        'unwind/Resume.c',
-        'unwind/Resume_or_Rethrow.c',
-        'unwind/SetGR.c',
-        'unwind/SetIP.c',
-        'unwind/GetIPInfo.c',
-        'x86_64/setcontext.S',
-        'x86_64/Lapply_reg_state.c',
-        'x86_64/Lreg_states_iterate.c',
-        'x86_64/Lcreate_addr_space.c',
-        'x86_64/Lget_save_loc.c',
-        'x86_64/Lglobal.c',
-        'x86_64/Linit.c',
-        'x86_64/Linit_local.c',
-        'x86_64/Linit_remote.c',
-        'x86_64/Lget_proc_info.c',
-        'x86_64/Lregs.c',
-        'x86_64/Lresume.c',
-        'x86_64/Lstash_frame.c',
-        'x86_64/Lstep.c',
-        'x86_64/Ltrace.c',
-        'x86_64/getcontext.S',
-    ]],
-    LIBDEPS=[
-        'unwind-dwarf-local',
-        'unwind-elf64',
-    ],
-    LIBS=[
-        'c',
-        'gcc_s',
-        'lzma',
-    ],
-    LIBDEPS_TAGS=[
-        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
-    ])
-
-env.Library(
-    target = 'unwind-x86_64',
-    source = [unwind_src_dir + '/' + f for f in [
-        'os-linux.c',
-        'mi/init.c',
-        'mi/flush_cache.c',
-        'mi/mempool.c',
-        'mi/strerror.c',
-        'x86_64/is_fpreg.c',
-        'x86_64/regname.c',
-        'x86_64/Gos-linux.c',
-        'mi/Gdyn-extract.c',
-        'mi/Gdyn-remote.c',
-        'mi/Gfind_dynamic_proc_info.c',
-        'mi/Gget_accessors.c',
-        'mi/Gget_proc_info_by_ip.c',
-        'mi/Gget_proc_name.c',
-        'mi/Gput_dynamic_unwind_info.c',
-        'mi/Gdestroy_addr_space.c',
-        'mi/Gget_reg.c',
-        'mi/Gset_reg.c',
-        'mi/Gget_fpreg.c',
-        'mi/Gset_fpreg.c',
-        'mi/Gset_caching_policy.c',
-        'mi/Gset_cache_size.c',
-        'x86_64/Gapply_reg_state.c',
-        'x86_64/Greg_states_iterate.c',
-        'x86_64/Gcreate_addr_space.c',
-        'x86_64/Gget_save_loc.c',
-        'x86_64/Gglobal.c',
-        'x86_64/Ginit.c',
-        'x86_64/Ginit_local.c',
-        'x86_64/Ginit_remote.c',
-        'x86_64/Gget_proc_info.c',
-        'x86_64/Gregs.c',
-        'x86_64/Gresume.c',
-        'x86_64/Gstash_frame.c',
-        'x86_64/Gstep.c',
-        'x86_64/Gtrace.c',
-    ]],
-    LIBDEPS = [
-        'unwind-dwarf-generic',
-        'unwind-elf64',
-        'unwind',
-    ],
-    LIBS = [
-        'c',
-    ])
+    target = 'unwind',
+    source = unwind_sources_files)
