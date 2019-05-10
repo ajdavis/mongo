@@ -142,6 +142,7 @@ public:
 
     Status waitUntilOpTimeForRead(OperationContext*, const repl::ReadConcernArgs&) override;
     Status awaitTimestampCommitted(OperationContext* opCtx, Timestamp ts) override;
+    SharedSemiFuture<void> awaitStatusChange() override;
 
     OID getElectionId() override;
 

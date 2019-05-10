@@ -27,6 +27,8 @@
  *    it in the license file.
  */
 
+ #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kSharding
+
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/auth/sasl_mechanism_registry.h"
@@ -39,6 +41,7 @@
 #include "mongo/rpc/metadata/client_metadata.h"
 #include "mongo/rpc/metadata/client_metadata_ismaster.h"
 #include "mongo/transport/message_compressor_manager.h"
+#include "mongo/util/log.h"
 #include "mongo/util/map_util.h"
 #include "mongo/util/net/socket_utils.h"
 #include "mongo/util/version.h"
@@ -106,6 +109,21 @@ public:
                 opCtx->getClient(), std::move(swParseClientMetadata.getValue()));
         }
 
+        // Initiate long-polling?
+        const int awaitTimeMillis =
+            uassertStatusOK(QueryRequest::parseMaxTimeMS(cmdObj["awaitStatusChangeMillis"]));
+
+        auto start = Date_t::now();
+
+        if (awaitTimeMillis > 0) {
+            // Tests depend on this log line.
+            LOG(2) << "Received isMaster command with awaitStatusChangeMillis, waiting for state "
+                      "change";
+            opCtx->sleepFor(Milliseconds(awaitTimeMillis));
+        }
+
+        auto awaitedTime = Date_t::now() - start;
+
         result.appendBool("ismaster", true);
         result.append("msg", "isdbgrid");
         result.appendNumber("maxBsonObjectSize", BSONObjMaxUserSize);
@@ -114,6 +132,7 @@ public:
         result.appendDate("localTime", jsTime());
         result.append("logicalSessionTimeoutMinutes", localLogicalSessionTimeoutMinutes);
         result.appendNumber("connectionId", opCtx->getClient()->getConnectionId());
+        result.appendNumber("awaitedTimeMillis", durationCount<Milliseconds>(awaitedTime));
 
         // Mongos tries to keep exactly the same version range of the server for which
         // it is compiled.

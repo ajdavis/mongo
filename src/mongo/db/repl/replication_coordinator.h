@@ -38,6 +38,7 @@
 #include "mongo/db/repl/member_state.h"
 #include "mongo/db/repl/repl_settings.h"
 #include "mongo/db/repl/sync_source_selector.h"
+#include "mongo/util/future.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/time_support.h"
 
@@ -437,6 +438,12 @@ public:
      * OperationContext, if one has been set.
      */
     virtual Status awaitTimestampCommitted(OperationContext* opCtx, Timestamp ts) = 0;
+
+    /**
+     * Waits until there is a significant replica set status change, such as this member's state
+     * changing, or a replica set config change.
+     */
+    virtual SharedSemiFuture<void> awaitStatusChange() = 0;
 
     /**
      * Retrieves and returns the current election id, which is a unique id that is local to

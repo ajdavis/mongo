@@ -3757,6 +3757,77 @@ TEST_F(
     awaiterJournaled.reset();
 }
 
+TEST_F(ReplCoordTest, AwaitStatusChange) {
+    auto makeConfig = [](int version) {
+        return BSON("_id"
+                    << "mySet"
+                    << "version"
+                    << 2
+                    << "members"
+                    << BSON_ARRAY(BSON("host"
+                                       << "node1:12345"
+                                       << "_id"
+                                       << 0)
+                                  << BSON("host"
+                                          << "node2:12345"
+                                          << "_id"
+                                          << 1))
+                    << "protocolVersion"
+                    << 1);
+    };
+
+    assertStartSuccess(makeConfig(2), HostAndPort("node1", 12345));
+    auto replCoord = getReplCoord();
+
+    // The future from awaitStatusChange is resolved by setFollowerMode.
+    {
+        auto f = replCoord->awaitStatusChange();
+        ASSERT_FALSE(f.isReady());
+        ASSERT_FALSE(f.isReady());
+        ASSERT_OK(replCoord->setFollowerMode(MemberState::RS_SECONDARY));
+        ASSERT(f.isReady());
+    }
+
+    replCoordSetMyLastAppliedOpTime(OpTimeWithTermOne(100, 1), Date_t::min() + Seconds(100));
+    replCoordSetMyLastDurableOpTime(OpTimeWithTermOne(100, 1), Date_t::min() + Seconds(100));
+
+    // The future from awaitStatusChange is resolved by an election.
+    {
+        auto f = replCoord->awaitStatusChange();
+        ASSERT_FALSE(f.isReady());
+        simulateSuccessfulV1Election();
+        ASSERT(f.isReady());
+    }
+
+    // The future from awaitStatusChange is resolved by processReplSetReconfig.
+    {
+        auto f = replCoord->awaitStatusChange();
+        ASSERT_FALSE(f.isReady());
+        ReplSetReconfigArgs args;
+        args.force = true;
+        args.newConfigObj = makeConfig(3);
+        BSONObjBuilder result;
+        Status status(ErrorCodes::InternalError, "Not Set");
+        stdx::thread reconfigThread([&] { doReplSetReconfig(getReplCoord(), &status); });
+        replyToReceivedHeartbeatV1();
+        reconfigThread.join();
+        ASSERT_OK(status);
+        ASSERT(f.isReady());
+    }
+
+    // The future from awaitStatusChange times out if there is no state change.
+    {
+        auto f = replCoord->awaitStatusChange();
+        ASSERT_FALSE(f.isReady());
+        auto opCtx = makeOperationContext();
+        opCtx->setDeadlineAfterNowBy(Microseconds(1000), ErrorCodes::MaxTimeMSExpired);
+        getNet()->enterNetwork();
+        getNet()->advanceTime(getNet()->now() + Milliseconds(2));
+        getNet()->exitNetwork();
+        ASSERT_THROWS_CODE(f.wait(opCtx.get()), DBException, ErrorCodes::MaxTimeMSExpired);
+    }
+}
+
 TEST_F(ReplCoordTest,
        NodeReturnsOKFromAwaitReplicationWhenReconfiggingToASetWhereMajorityIsSmallerAndSatisfied) {
     assertStartSuccess(BSON("_id"

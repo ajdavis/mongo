@@ -266,6 +266,10 @@ Status ReplicationCoordinatorMock::awaitTimestampCommitted(OperationContext* opC
     return Status::OK();
 }
 
+SharedSemiFuture<void> ReplicationCoordinatorMock::awaitStatusChange() {
+    return SemiFuture<void>::makeReady().share();
+};
+
 OID ReplicationCoordinatorMock::getElectionId() {
     // TODO
     return OID();

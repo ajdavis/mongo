@@ -153,6 +153,7 @@ public:
                                                const ReadConcernArgs& settings,
                                                boost::optional<Date_t> deadline) override;
     virtual Status awaitTimestampCommitted(OperationContext* opCtx, Timestamp ts);
+    virtual SharedSemiFuture<void> awaitStatusChange() override;
     virtual OID getElectionId();
 
     virtual OID getMyRID() const;

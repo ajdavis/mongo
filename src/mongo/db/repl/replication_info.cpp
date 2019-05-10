@@ -26,7 +26,7 @@
  *    exception statement from all source files in the program, then also delete
  *    it in the license file.
  */
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kFTDC
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kReplication
 
 #include "mongo/platform/basic.h"
 
@@ -58,6 +58,7 @@
 #include "mongo/executor/network_interface.h"
 #include "mongo/rpc/metadata/client_metadata.h"
 #include "mongo/rpc/metadata/client_metadata_ismaster.h"
+#include "mongo/util/log.h"
 #include "mongo/util/map_util.h"
 
 namespace mongo {
@@ -331,6 +332,10 @@ public:
             sessionTagsToSet |= transport::Session::kExternalClientKeepOpen;
         }
 
+        // Initiate long-polling?
+        const int awaitTimeMillis =
+            uassertStatusOK(QueryRequest::parseMaxTimeMS(cmdObj["awaitStatusChangeMillis"]));
+
         auto session = opCtx->getClient()->session();
         if (session) {
             session->mutateTags(
@@ -348,6 +353,26 @@ public:
                 });
         }
 
+
+        auto start = Date_t::now();
+
+        if (awaitTimeMillis > 0) {
+            // Tests depend on this log line.
+            LOG(2) << "Received isMaster command with awaitStatusChangeMillis, waiting for state "
+                      "change";
+            auto replCoord = ReplicationCoordinator::get(opCtx);
+            if (replCoord->getSettings().usingReplSets()) {
+                auto future = replCoord->awaitStatusChange();
+                opCtx->setDeadlineAfterNowBy(Milliseconds(awaitTimeMillis),
+                                             ErrorCodes::ExceededTimeLimit);
+                MONGO_COMPILER_VARIABLE_UNUSED auto result = future.waitNoThrow(opCtx);
+            } else {
+                opCtx->sleepFor(Milliseconds(awaitTimeMillis));
+            }
+        }
+
+        auto awaitedTime = Date_t::now() - start;
+
         appendReplicationInfo(opCtx, result, 0);
 
         if (serverGlobalParams.clusterRole == ClusterRole::ConfigServer) {
@@ -361,6 +386,7 @@ public:
         result.appendDate("localTime", jsTime());
         result.append("logicalSessionTimeoutMinutes", localLogicalSessionTimeoutMinutes);
         result.appendNumber("connectionId", opCtx->getClient()->getConnectionId());
+        result.appendNumber("awaitedTimeMillis", durationCount<Milliseconds>(awaitedTime));
 
         if (internalClientElement) {
             result.append("minWireVersion",

@@ -345,7 +345,8 @@ ReplicationCoordinatorImpl::ReplicationCoordinatorImpl(
       _readWriteAbility(stdx::make_unique<ReadWriteAbility>(!settings.usingReplSets())),
       _replicationProcess(replicationProcess),
       _storage(storage),
-      _random(prngSeed) {
+      _random(prngSeed),
+      _statusChangePromise(std::make_unique<SharedPromise<void>>()) {
 
     _termShadow.store(OpTime::kUninitializedTerm);
 
@@ -1512,6 +1513,11 @@ Status ReplicationCoordinatorImpl::awaitTimestampCommitted(OperationContext* opC
     OpTime waitOpTime(ts, OpTime::kUninitializedTerm);
     const bool isMajorityCommittedRead = true;
     return _waitUntilOpTime(opCtx, isMajorityCommittedRead, waitOpTime);
+}
+
+SharedSemiFuture<void> ReplicationCoordinatorImpl::awaitStatusChange() {
+    stdx::lock_guard<stdx::mutex> lk(_statusChangePromiseMutex);
+    return _statusChangePromise->getFuture();
 }
 
 OpTimeAndWallTime ReplicationCoordinatorImpl::_getMyLastAppliedOpTimeAndWallTime_inlock() const {
@@ -2748,6 +2754,7 @@ void ReplicationCoordinatorImpl::_setConfigState_inlock(ConfigState newState) {
     if (newState != _rsConfigState) {
         _rsConfigState = newState;
         _rsConfigStateChange.notify_all();
+        _onStatusChange();
     }
 }
 
@@ -2875,6 +2882,7 @@ ReplicationCoordinatorImpl::_updateMemberStateFromTopologyCoordinator(WithLock l
     _memberState = newState;
 
     _cancelAndRescheduleElectionTimeout_inlock();
+    _onStatusChange();
 
     // Notifies waiters blocked in waitForMemberState().
     // For testing only.
@@ -2927,10 +2935,18 @@ void ReplicationCoordinatorImpl::_postWonElectionUpdateMemberState(WithLock lk) 
     invariant(!_catchupState);
     _catchupState = stdx::make_unique<CatchupState>(this);
     _catchupState->start_inlock();
+    _onStatusChange();
 }
 
 void ReplicationCoordinatorImpl::_onFollowerModeStateChange() {
     _externalState->signalApplierToChooseNewSyncSource();
+    _onStatusChange();
+}
+
+void ReplicationCoordinatorImpl::_onStatusChange() {
+    stdx::lock_guard<stdx::mutex> lk(_statusChangePromiseMutex);
+    _statusChangePromise->emplaceValue();
+    _statusChangePromise = std::make_unique<SharedPromise<void>>();
 }
 
 void ReplicationCoordinatorImpl::CatchupState::start_inlock() {

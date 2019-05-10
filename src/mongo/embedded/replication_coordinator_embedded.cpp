@@ -267,6 +267,10 @@ Status ReplicationCoordinatorEmbedded::awaitTimestampCommitted(OperationContext*
     UASSERT_NOT_IMPLEMENTED;
 }
 
+SharedSemiFuture<void> ReplicationCoordinatorEmbedded::awaitStatusChange() {
+    UASSERT_NOT_IMPLEMENTED;
+}
+
 ReplicationCoordinator::StatusAndDuration ReplicationCoordinatorEmbedded::awaitReplication(
     OperationContext*, const OpTime&, const WriteConcernOptions&) {
     UASSERT_NOT_IMPLEMENTED;

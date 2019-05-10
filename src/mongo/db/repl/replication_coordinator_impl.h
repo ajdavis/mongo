@@ -184,6 +184,7 @@ public:
     virtual Status waitUntilOpTimeForRead(OperationContext* opCtx,
                                           const ReadConcernArgs& readConcern) override;
     Status awaitTimestampCommitted(OperationContext* opCtx, Timestamp ts) override;
+    SharedSemiFuture<void> awaitStatusChange() override;
     virtual OID getElectionId() override;
 
     virtual int getMyId() const override;
@@ -964,6 +965,11 @@ private:
     void _onFollowerModeStateChange();
 
     /**
+     * Helper to resolve awaitStatusChange() futures.
+     */
+    void _onStatusChange();
+
+    /**
      * Begins an attempt to elect this node.
      * Called after an incoming heartbeat changes this node's view of the set such that it
      * believes it can be elected PRIMARY.
@@ -1478,6 +1484,11 @@ private:
 
     // If we're in terminal shutdown.  If true, we'll refuse to vote in elections.
     bool _inTerminalShutdown = false;  // (M)
+
+    // This promise is fulfilled and reset each time there is a member state or config change, which
+    // unblocks threads that long-poll isMaster for changes.
+    stdx::mutex _statusChangePromiseMutex;
+    std::unique_ptr<SharedPromise<void>> _statusChangePromise;
 };
 
 }  // namespace repl
