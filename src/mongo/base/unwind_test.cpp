@@ -110,9 +110,6 @@ TEST(Unwind, Demangled) {
         callNext<0>, callNext<1>, callNext<2>, callNext<3>, callNext<4>, callNext<5>,
     }};
     ctx.plan.back()(ctx);
-    if (1) {
-        std::cerr << "backtrace: [[[\n" << ctx.s << "]]]\n";
-    }
     // Check that these function names appear in the trace, in order.
     // There will of course be characters between them but ignore that.
     const std::string frames[] = {
