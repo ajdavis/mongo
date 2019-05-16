@@ -3,6 +3,7 @@
 (function() {
     'use strict';
     load('jstests/libs/check_log.js');
+    load('jstests/libs/parallelTester.js');
 
     const rst = new ReplSetTest({nodes: 2});
     // Ensure 'Received isMaster command with awaitStatusChangeMillis' is logged.
@@ -11,11 +12,17 @@
 
     const pollNodeZero = () => {
         assert.commandWorked(nodeZero.adminCommand({clearLog: 'global'}));
-        const pid = startParallelShellPid(() => {
-            const reply = db.adminCommand({isMaster: 1, awaitStatusChangeMillis: 999999});
-            print(`parallel shell got reply ${tojson(reply)}`);
+        const latch = new CountDownLatch(1);
+        const thread = new Thread((connString, latch) => {
+            const client = new Mongo(connString);
+            const reply =
+                client.getDB('admin').runCommand({isMaster: 1, awaitStatusChangeMillis: 999999});
+            print(`got isMaster reply ${tojson(reply)}`);
+            latch.countDown();
             return assert.commandWorked(reply);
-        }, nodeZero.port);
+        }, nodeZero.host, latch);
+
+        thread.start();
 
         checkLog.contains(
             nodeZero,
@@ -24,9 +31,10 @@
         return {
             assertDone: (done) => {
                 if (done) {
-                    assert.eq(0, waitProgram(pid), 'encountered an error in the parallel shell');
+                    jsTestLog('join thread');
+                    thread.join();
                 } else {
-                    assert(checkProgram(pid).alive, 'parallel shell should not have exited yet');
+                    assert.eq(1, latch.getCount(), 'thread terminated early');
                 }
             }
         };

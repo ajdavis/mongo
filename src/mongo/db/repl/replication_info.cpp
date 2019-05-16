@@ -353,8 +353,8 @@ public:
                 });
         }
 
-
-        auto start = Date_t::now();
+        auto clockSource = opCtx->getServiceContext()->getFastClockSource();
+        auto start = clockSource->now();
 
         if (awaitTimeMillis > 0) {
             // Tests depend on this log line.
@@ -363,15 +363,18 @@ public:
             auto replCoord = ReplicationCoordinator::get(opCtx);
             if (replCoord->getSettings().usingReplSets()) {
                 auto future = replCoord->awaitStatusChange();
-                opCtx->setDeadlineAfterNowBy(Milliseconds(awaitTimeMillis),
-                                             ErrorCodes::ExceededTimeLimit);
-                MONGO_COMPILER_VARIABLE_UNUSED auto result = future.waitNoThrow(opCtx);
+                auto status = opCtx->runWithDeadline(start + Milliseconds(awaitTimeMillis),
+                                                     ErrorCodes::ExceededTimeLimit,
+                                                     [&] { return future.getNoThrow(opCtx); });
+                if (!status.isOK() && status != ErrorCodes::ExceededTimeLimit) {
+                    uassertStatusOK(status);
+                }
             } else {
                 opCtx->sleepFor(Milliseconds(awaitTimeMillis));
             }
         }
 
-        auto awaitedTime = Date_t::now() - start;
+        auto awaitedTime = clockSource->now() - start;
 
         appendReplicationInfo(opCtx, result, 0);
 

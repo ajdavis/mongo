@@ -1516,7 +1516,7 @@ Status ReplicationCoordinatorImpl::awaitTimestampCommitted(OperationContext* opC
 }
 
 SharedSemiFuture<void> ReplicationCoordinatorImpl::awaitStatusChange() {
-    stdx::lock_guard<stdx::mutex> lk(_statusChangePromiseMutex);
+    stdx::lock_guard lk(_statusChangePromiseMutex);
     return _statusChangePromise->getFuture();
 }
 
@@ -2944,9 +2944,13 @@ void ReplicationCoordinatorImpl::_onFollowerModeStateChange() {
 }
 
 void ReplicationCoordinatorImpl::_onStatusChange() {
-    stdx::lock_guard<stdx::mutex> lk(_statusChangePromiseMutex);
-    _statusChangePromise->emplaceValue();
-    _statusChangePromise = std::make_unique<SharedPromise<void>>();
+    // Lock, swap the promise with a new one, unlock, and notify threads awaiting the old one.
+    auto promise = [&] {
+        stdx::lock_guard lk(_statusChangePromiseMutex);
+        return std::exchange(_statusChangePromise, std::make_unique<SharedPromise<void>>());
+    }();
+
+    promise->emplaceValue();
 }
 
 void ReplicationCoordinatorImpl::CatchupState::start_inlock() {
