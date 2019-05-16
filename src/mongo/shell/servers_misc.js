@@ -115,7 +115,7 @@ allocatePorts = function(numPorts) {
     return ports;
 };
 
-function startParallelShellPid(jsCode, port, noConnect) {
+function startParallelShell(jsCode, port, noConnect) {
     var shellPath = MongoRunner.mongoShellPath;
     var args = [shellPath];
 
@@ -163,11 +163,7 @@ function startParallelShellPid(jsCode, port, noConnect) {
 
     args.push("--eval", jsCode);
 
-    return startMongoProgramNoConnect.apply(null, args);
-}
-
-function startParallelShell(jsCode, port, noConnect) {
-    const pid = startParallelShellPid(jsCode, port, noConnect);
+    var pid = startMongoProgramNoConnect.apply(null, args);
 
     // Returns a function that when called waits for the parallel shell to exit and returns the exit
     // code of the process. By default an error is thrown if the parallel shell exits with a nonzero
