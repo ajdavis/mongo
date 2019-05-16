@@ -67,7 +67,7 @@ std::string trace() {
             break;
         }
         out += "0x{:x}:"_format(pc);
-        char sym[256];
+        char sym[32 << 10];
         char* name = sym;
         int err;
         if ((err = unw_get_proc_name(&cursor, sym, sizeof(sym), &offset)) != 0) {

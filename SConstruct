@@ -313,25 +313,26 @@ add_option('use-sasl-client',
 
 # Most of the "use-system-*" options follow a simple form.
 for pack in [
-    'tcmalloc',
-    'fmt',
-    'unwind',
-    'pcre',
-    'wiredtiger',
     'abseil-cpp',
-    'boost',
-    'snappy',
-    'valgrind',
-    ('google-benchmark', 'Google benchmark'),
-    'zlib',
-    ('zstd', 'Zstandard'),
-    'sqlite',
-    'stemmer',
-    'yaml',
     'asio', 'ASIO',
+    'boost',
+    'fmt',
+    ('google-benchmark', 'Google benchmark'),
     'icu', 'ICU',
     ('intel_decimal128', 'intel decimal128'),
-    'kms-message']:
+    'kms-message',
+    'pcre',
+    'snappy',
+    'sqlite',
+    'stemmer',
+    'tcmalloc',
+    'unwind',
+    'valgrind',
+    'wiredtiger',
+    'yaml',
+    'zlib',
+    ('zstd', 'Zstandard'),
+    ]:
     if isinstance(pack,tuple):
         (name,pretty) = pack
     else:

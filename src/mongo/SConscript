@@ -150,7 +150,6 @@ env.Library(
         '$BUILD_DIR/third_party/shim_fmt',
         '$BUILD_DIR/third_party/shim_intel_decimal128',
         '$BUILD_DIR/third_party/shim_pcrecpp',
-        '$BUILD_DIR/third_party/shim_unwind',
         'util/quick_exit',
     ],
     LIBDEPS_PRIVATE=[
