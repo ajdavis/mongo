@@ -37,11 +37,11 @@
 #include <fmt/format.h>
 #include <fmt/printf.h>
 
-// #define UNW_LOCAL_ONLY  // shouldn't need this at all
 #include <libunwind.h>
 
 #include "mongo/stdx/functional.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/if_constexpr.h"
 
 namespace mongo {
 
@@ -94,17 +94,15 @@ struct Context {
 };
 
 // Disable clang-format for the "if constexpr"
-// clang-format off
 template <int N>
 void callNext(Context& ctx) {
-    if constexpr(N == 0) {
+    IF_CONSTEXPR (N == 0) {
         ctx.s = trace();
     } else {
         ctx.plan[N - 1](ctx);
     }
     asm volatile("");  // Forces compiler to invoke next plan with `call` instead of `jmp`.
 }
-// clang-format on
 
 TEST(Unwind, Demangled) {
     // Trickery with std::vector<stdx::function> is to hide from the optimizer.
