@@ -215,6 +215,11 @@ if use_system_version_of_library("unwind"):
         ])
 else:
     unwindEnv = env.Clone()
+
+    # SCons uses the "$CC" tool for both C and assembler files. Distinguish them for the sake of
+    # later tools like our Ninja SCons module.
+    unwindEnv['ASPP'] = '$CC'
+    unwindEnv['ASPPCOM'] = unwindEnv['ASPPCOM'].replace('$CC ', '$ASPP ')
     unwindEnv.InjectThirdParty(libraries=['unwind'])
     unwindEnv.InjectMongoIncludePaths()
 
