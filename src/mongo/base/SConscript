@@ -1,6 +1,7 @@
 # -*- mode: python -*-
 
 Import("env")
+Import("use_libunwind")
 
 env = env.Clone()
 
@@ -113,13 +114,15 @@ env.CppUnitTest(
     ],
 )
 
-unwindTestEnv = env.Clone()
-unwindTestEnv.InjectThirdParty(libraries=['unwind'])
-unwindTestEnv.CppUnitTest(
-    target=[
-        'unwind_test',
-    ],
-    source=[
-        'unwind_test.cpp',
-    ],
-)
+if use_libunwind:
+    unwindTestEnv = env.Clone()
+    unwindTestEnv.InjectThirdParty(libraries=['unwind'])
+    unwindTestEnv.CppUnitTest(
+        target=[
+            'unwind_test',
+        ],
+        source=[
+            'backtrace_visibility_test.cpp',
+            'unwind_test.cpp',
+        ],
+    )
