@@ -8,6 +8,6 @@ CONSTANT MaxTerm
 CONSTANT MaxLogLen
 
 StateConstraint ==
-    /\ GlobalCurrentTerm <= MaxTerm
+    /\ globalCurrentTerm <= MaxTerm
     /\ \forall i \in Server: Len(log[i]) <= MaxLogLen
 =============================================================================
