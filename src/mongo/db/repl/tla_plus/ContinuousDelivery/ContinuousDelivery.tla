@@ -29,6 +29,7 @@ VARIABLE highestCommitNumber
 
 \* Branches are sequences of [commitNumber |-> Int, fcvLow |-> Int, fcvHigh |-> Int]. fcvHigh/Low
 \* are the arguments to setFeatureCompatibilityVersion that a server at this commit accepts.
+\* TODO: fcvHigh is the one enabled by default? on upgrade of existing cluster fcvLow is enabled until setFCV()
 \* Commits first appear on the master branch.
 VARIABLE masterBranch
 
@@ -166,9 +167,17 @@ LTSFCV ==
 CDNewerThanLTS ==
     /\ cdRelease.versionNumber > ltsRelease.versionNumber
 
+\* TODO: no, there's a point some time after LTS this increments, but not on first CD release
 CDFCV ==
     /\ cdRelease.commit.fcvLow = ltsRelease.commit.fcvHigh
     /\ cdRelease.commit.fcvHigh = ltsRelease.commit.fcvHigh + 1
+
+
+\* TODO: INVARIANTS FOR THESE ASSERTIONS:
+\*In CD N+1, no features are expected to be conditionally enabled using FCV, since LTS V (CD N) supports all such features that are enabled in CD N+1. CD N+2, CD N+3, and LTS V+1 (CD N+4) are expected to gate features using FCV.
+\*
+\*In CD N+1, downgrading FCV from V+1 to V is expected to always succeed and cause no on-disk transformations, since LTS V (CD N) supports all features that are enabled in CD N+1. Downgrading FCV from V to V-1 in LTS V (CD N) must remove any on-disk format changes for features enabled in CD N+1.
+
 
 
 (**************************************************************************************************)
