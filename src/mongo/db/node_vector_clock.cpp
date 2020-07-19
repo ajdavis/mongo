@@ -27,57 +27,92 @@
  *    it in the license file.
  */
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplication
+
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/node_vector_clock.h"
 
-#include "mongo/bson/util/bson_extract.h"
-#include "mongo/client/query.h"
-#include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/logical_clock_gen.h"
-#include "mongo/db/logical_time_validator.h"
-#include "mongo/db/vector_clock_document_gen.h"
-#include "mongo/util/static_immortal.h"
+#include "mongo/db/repl/replication_coordinator.h"
+#include "mongo/db/service_context.h"
+#include "mongo/logv2/log.h"
 
 namespace mongo {
 
-namespace {
+const ServiceContext::Decoration<NodeVectorClock> forService =
+    ServiceContext::declareDecoration<NodeVectorClock>();
 
-const auto nodeVectorClockDecoration = ServiceContext::declareDecoration<NodeVectorClock*>();
-
-}  // namespace
-
-NodeVectorClock* NodeVectorClock::get(ServiceContext* service) {
-    return nodeVectorClockDecoration(service);
-}
-
-NodeVectorClock* NodeVectorClock::get(OperationContext* ctx) {
-    return get(ctx->getClient()->getServiceContext());
+NodeVectorClock* NodeVectorClock::get(ServiceContext* context) {
+    return &forService(context);
 }
 
 NodeVectorClock::NodeVectorClock() = default;
 
 NodeVectorClock::~NodeVectorClock() = default;
 
-void NodeVectorClock::registerVectorClockOnServiceContext(ServiceContext* service,
-                                                          NodeVectorClock* nodeVectorClock) {
-    invariant(!nodeVectorClock->_service);
-    nodeVectorClock->_service = service;
-    auto& clock = nodeVectorClockDecoration(service);
-    invariant(!clock);
-    clock = std::move(nodeVectorClock);
-}
-
-BSONObj NodeVectorClock::getTime() const {
+void NodeVectorClock::setMyHostAndPort(HostAndPort hostAndPort) {
     stdx::lock_guard<Latch> lock(_mutex);
-    return {};
+    _myHostAndPort = hostAndPort;
 }
 
-bool NodeVectorClock::gossipOut(OperationContext* opCtx, BSONObjBuilder* outMessage) const {
-    outMessage->append(kNodeVectorClockFieldName, BSONObj());
-    return true;
+void NodeVectorClock::clearMyHostAndPort() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    _myHostAndPort = {};
 }
 
-void NodeVectorClock::gossipIn(OperationContext* opCtx, const BSONObj& inMessage) {}
+BSONObj NodeVectorClock::getClock() {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _getClock(lock);
+}
 
+void NodeVectorClock::gossipOut(BSONObjBuilder* outMessage) {
+    auto replCoord = repl::ReplicationCoordinator::get(getGlobalServiceContext());
+    if (!replCoord) {
+        return;
+    }
+
+    BSONObj clockObj;
+
+    {
+        stdx::lock_guard<Latch> lock(_mutex);
+        if (!_myHostAndPort.empty()) {
+            _myClock++;
+            _clock[_myHostAndPort.toString()] = _myClock;
+        }
+
+        clockObj = _getClock(lock);
+    }
+
+    outMessage->append(kNodeVectorClockFieldName, clockObj);
+}
+
+void NodeVectorClock::gossipIn(const BSONObj& inMessage) {
+    auto inClock = inMessage[kNodeVectorClockFieldName];
+    if (inClock.eoo()) {
+        return;
+    }
+
+    stdx::lock_guard<Latch> lock(_mutex);
+    uassert(0,
+            str::stream() << "Wrong type for " << kNodeVectorClockFieldName << ": "
+                          << typeName(inClock.type()),
+            inClock.isABSONObj());
+
+    for (auto& elem : inClock.Obj()) {
+        uassert(0,
+                str::stream() << "Wrong type for " << kNodeVectorClockFieldName
+                              << " element: " << typeName(elem.type()),
+                elem.isNumber());
+        _clock[elem.fieldName()] = std::max(_clock[elem.fieldName()], elem.numberLong());
+    }
+}
+
+BSONObj NodeVectorClock::_getClock(WithLock lk) {
+    BSONObjBuilder bob;
+    for (auto& [hostString, hostClock] : _clock) {
+        bob.append(hostString, hostClock);
+    }
+
+    return bob.obj();
+}
 }  // namespace mongo

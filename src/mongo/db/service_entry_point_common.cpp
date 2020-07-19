@@ -442,7 +442,7 @@ void appendClusterAndOperationTime(OperationContext* opCtx,
         return;
     }
 
-    NodeVectorClock::get(opCtx)->gossipOut(opCtx, metadataBob);
+    NodeVectorClock::get(opCtx->getServiceContext())->gossipOut(metadataBob);
 
     if (!VectorClock::get(opCtx)->isEnabled()) {
         return;

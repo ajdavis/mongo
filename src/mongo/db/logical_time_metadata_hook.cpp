@@ -51,7 +51,7 @@ LogicalTimeMetadataHook::LogicalTimeMetadataHook(ServiceContext* service) : _ser
 Status LogicalTimeMetadataHook::writeRequestMetadata(OperationContext* opCtx,
                                                      BSONObjBuilder* metadataBob) {
     VectorClock::get(_service)->gossipOut(opCtx, metadataBob, transport::Session::kInternalClient);
-    NodeVectorClock::get(_service)->gossipOut(opCtx, metadataBob);
+    NodeVectorClock::get(_service)->gossipOut(metadataBob);
     return Status::OK();
 }
 
@@ -73,7 +73,7 @@ Status LogicalTimeMetadataHook::readReplyMetadata(OperationContext* opCtx,
 
     VectorClock::get(_service)->gossipIn(
         opCtx, metadataObj, false /* couldBeUnauthorized */, transport::Session::kInternalClient);
-    NodeVectorClock::get(_service)->gossipIn(opCtx, metadataObj);
+    NodeVectorClock::get(_service)->gossipIn(metadataObj);
     return Status::OK();
 }
 

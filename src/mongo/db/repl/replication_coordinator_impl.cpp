@@ -62,6 +62,7 @@
 #include "mongo/db/index_builds_coordinator.h"
 #include "mongo/db/kill_sessions_local.h"
 #include "mongo/db/mongod_options_storage_gen.h"
+#include "mongo/db/node_vector_clock.h"
 #include "mongo/db/prepare_conflict_tracker.h"
 #include "mongo/db/repl/always_allow_non_local_writes.h"
 #include "mongo/db/repl/check_quorum_for_config_change.h"
@@ -4511,6 +4512,13 @@ ReplicationCoordinatorImpl::_setCurrentRSConfig(WithLock lk,
               "hostAndPort"_attr = _rsConfig.getMemberAt(_selfIndex).getHostAndPort());
     } else {
         LOGV2(21394, "This node is not a member of the config");
+    }
+
+    auto nodeVectorClock = NodeVectorClock::get(opCtx->getServiceContext());
+    if (_selfIndex == -1) {
+        nodeVectorClock->clearMyHostAndPort();
+    } else {
+        nodeVectorClock->setMyHostAndPort(_rsConfig.getMemberAt(_selfIndex).getHostAndPort());
     }
 
     // Wake up writeConcern waiters that are no longer satisfiable due to the rsConfig change.

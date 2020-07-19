@@ -112,7 +112,7 @@ MONGO_FAIL_POINT_DEFINE(allowSkippingAppendRequiredFieldsToResponse);
  * Append required fields to command response.
  */
 void appendRequiredFieldsToResponse(OperationContext* opCtx, BSONObjBuilder* responseBuilder) {
-    NodeVectorClock::get(opCtx)->gossipOut(opCtx, responseBuilder);
+    NodeVectorClock::get(opCtx->getServiceContext())->gossipOut(responseBuilder);
 
     // TODO SERVER-48142 should remove the following block.
     if (MONGO_unlikely(allowSkippingAppendRequiredFieldsToResponse.shouldFail())) {

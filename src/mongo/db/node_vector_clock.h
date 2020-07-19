@@ -29,11 +29,10 @@
 
 #pragma once
 
-#include <array>
+#include <unordered_map>
 
 #include "mongo/client/query.h"
 #include "mongo/db/logical_time.h"
-#include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/transport/session.h"
@@ -43,40 +42,46 @@ namespace mongo {
 
 class NodeVectorClock {
 public:
-    // Decorate ServiceContext with NodeVectorClock* which points to the actual vector clock
-    // implementation.
-    static NodeVectorClock* get(ServiceContext* service);
-    static NodeVectorClock* get(OperationContext* ctx);
-    static void registerVectorClockOnServiceContext(ServiceContext* service,
-                                                    NodeVectorClock* vectorClock);
+    static NodeVectorClock* get(ServiceContext* context);
 
     NodeVectorClock();
     virtual ~NodeVectorClock();
 
     /**
-     * Returns an instantaneous snapshot of the current time of all components.
+     * Initialize this server's vector clock entry when loading a replica set config.
      */
-    BSONObj getTime() const;
+    void setMyHostAndPort(HostAndPort hostAndPort);
 
     /**
-     * Adds the necessary fields to outMessage to gossip the current time to another node, taking
-     * into account if the gossiping is to an internal or external client (based on the session
-     * tags).  Returns true if the ClusterTime was output into outMessage, or false otherwise.
+     * Uninitialize this server's entry when loading a replica set config that omits self. We can
+     * still send and receive other servers' entries.
      */
-    bool gossipOut(OperationContext* opCtx,
-                   BSONObjBuilder* outMessage
-                   ) const;
+    void clearMyHostAndPort();
+
+    /**
+     * Returns an instantaneous snapshot of the current vector clock.
+     */
+    BSONObj getClock();
+
+    /**
+     * TODO
+     */
+    void gossipOut(BSONObjBuilder* outMessage);
     /**
      * Read the necessary fields from inMessage in order to update the current time, based on this
      * message received from another node, taking into account if the gossiping is from an internal
      * or external client (based on the session tags).
      */
-    void gossipIn(OperationContext* opCtx,
-                  const BSONObj& inMessage);
+    void gossipIn(const BSONObj& inMessage);
 
 private:
+    BSONObj _getClock(WithLock lk);
+
     mutable Mutex _mutex = MONGO_MAKE_LATCH("NodeVectorClock::_mutex");
     ServiceContext* _service{nullptr};
+    long long _myClock = 0LL;
+    HostAndPort _myHostAndPort;
+    std::unordered_map<std::string, long long> _clock;
     static constexpr char kNodeVectorClockFieldName[] = "nodeVectorClockForTest";
 };
 
