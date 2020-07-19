@@ -1572,6 +1572,7 @@ env.Library(
         'keys_collection_manager.cpp',
         'logical_clock.cpp',
         'logical_time_validator.cpp',
+        'node_vector_clock.cpp',
         'vector_clock.cpp',
         env.Idlc('keys_collection_manager.idl')[0],
         env.Idlc('logical_clock.idl')[0],

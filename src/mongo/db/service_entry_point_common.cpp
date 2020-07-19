@@ -59,6 +59,7 @@
 #include "mongo/db/logical_session_id.h"
 #include "mongo/db/logical_session_id_helpers.h"
 #include "mongo/db/logical_time_validator.h"
+#include "mongo/db/node_vector_clock.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_exec.h"
 #include "mongo/db/query/find.h"
@@ -437,8 +438,13 @@ void appendClusterAndOperationTime(OperationContext* opCtx,
                                    BSONObjBuilder* metadataBob,
                                    LogicalTime startTime) {
     if (repl::ReplicationCoordinator::get(opCtx)->getReplicationMode() !=
-            repl::ReplicationCoordinator::modeReplSet ||
-        !VectorClock::get(opCtx)->isEnabled()) {
+        repl::ReplicationCoordinator::modeReplSet) {
+        return;
+    }
+
+    NodeVectorClock::get(opCtx)->gossipOut(opCtx, metadataBob);
+
+    if (!VectorClock::get(opCtx)->isEnabled()) {
         return;
     }
 

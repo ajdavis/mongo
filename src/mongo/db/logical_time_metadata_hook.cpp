@@ -33,6 +33,7 @@
 
 #include <memory>
 
+#include "mongo/db/node_vector_clock.h"
 #include "mongo/db/operation_time_tracker.h"
 #include "mongo/db/vector_clock.h"
 
@@ -50,6 +51,7 @@ LogicalTimeMetadataHook::LogicalTimeMetadataHook(ServiceContext* service) : _ser
 Status LogicalTimeMetadataHook::writeRequestMetadata(OperationContext* opCtx,
                                                      BSONObjBuilder* metadataBob) {
     VectorClock::get(_service)->gossipOut(opCtx, metadataBob, transport::Session::kInternalClient);
+    NodeVectorClock::get(_service)->gossipOut(opCtx, metadataBob);
     return Status::OK();
 }
 
@@ -71,6 +73,7 @@ Status LogicalTimeMetadataHook::readReplyMetadata(OperationContext* opCtx,
 
     VectorClock::get(_service)->gossipIn(
         opCtx, metadataObj, false /* couldBeUnauthorized */, transport::Session::kInternalClient);
+    NodeVectorClock::get(_service)->gossipIn(opCtx, metadataObj);
     return Status::OK();
 }
 

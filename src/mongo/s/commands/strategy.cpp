@@ -54,6 +54,7 @@
 #include "mongo/db/logical_time_validator.h"
 #include "mongo/db/matcher/extensions_callback_noop.h"
 #include "mongo/db/namespace_string.h"
+#include "mongo/db/node_vector_clock.h"
 #include "mongo/db/operation_time_tracker.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/query/find_common.h"
@@ -111,6 +112,8 @@ MONGO_FAIL_POINT_DEFINE(allowSkippingAppendRequiredFieldsToResponse);
  * Append required fields to command response.
  */
 void appendRequiredFieldsToResponse(OperationContext* opCtx, BSONObjBuilder* responseBuilder) {
+    NodeVectorClock::get(opCtx)->gossipOut(opCtx, responseBuilder);
+
     // TODO SERVER-48142 should remove the following block.
     if (MONGO_unlikely(allowSkippingAppendRequiredFieldsToResponse.shouldFail())) {
         auto validator = LogicalTimeValidator::get(opCtx);
