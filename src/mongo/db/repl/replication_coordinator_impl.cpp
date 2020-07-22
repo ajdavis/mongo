@@ -4514,13 +4514,6 @@ ReplicationCoordinatorImpl::_setCurrentRSConfig(WithLock lk,
         LOGV2(21394, "This node is not a member of the config");
     }
 
-    auto nodeVectorClock = NodeVectorClock::get(opCtx->getServiceContext());
-    if (_selfIndex == -1) {
-        nodeVectorClock->clearMyHostAndPort();
-    } else {
-        nodeVectorClock->setMyHostAndPort(_rsConfig.getMemberAt(_selfIndex).getHostAndPort());
-    }
-
     // Wake up writeConcern waiters that are no longer satisfiable due to the rsConfig change.
     _replicationWaiterList.setValueIf_inlock(
         [this](const OpTime& opTime, const SharedWaiterHandle& waiter) {

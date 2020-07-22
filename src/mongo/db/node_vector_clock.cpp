@@ -50,16 +50,6 @@ NodeVectorClock::NodeVectorClock() = default;
 
 NodeVectorClock::~NodeVectorClock() = default;
 
-void NodeVectorClock::setMyHostAndPort(HostAndPort hostAndPort) {
-    stdx::lock_guard<Latch> lock(_mutex);
-    _myHostAndPort = hostAndPort;
-}
-
-void NodeVectorClock::clearMyHostAndPort() {
-    stdx::lock_guard<Latch> lock(_mutex);
-    _myHostAndPort = {};
-}
-
 BSONObj NodeVectorClock::getClock() {
     stdx::lock_guard<Latch> lock(_mutex);
     return _getClock(lock);
@@ -75,18 +65,14 @@ void NodeVectorClock::gossipOut(BSONObjBuilder* outMessage) {
 
     {
         stdx::lock_guard<Latch> lock(_mutex);
-        if (!_myHostAndPort.host().empty()) {
-        _myClock++;
-        _clock[_myHostAndPort.toString()] = _myClock;
-        }
-
+        _advanceMyClockHand(lock);
         clockObj = _getClock(lock);
     }
 
     LOGV2(202007190,
           "Sending node vector clock",
           "nodeVectorClock"_attr = clockObj,
-          "self"_attr = _myHostAndPort.toString(),
+          "myPort"_attr = std::to_string(serverGlobalParams.port),
           "message"_attr = outMessage->asTempObj());
 
     outMessage->append(kNodeVectorClockFieldName, clockObj);
@@ -104,24 +90,26 @@ void NodeVectorClock::gossipIn(const BSONObj& inMessage) {
             inClock.isABSONObj());
 
     stdx::lock_guard<Latch> lock(_mutex);
-    if (_myHostAndPort.host().empty()) {
-        return;
-    }
-
-    _myClock++;
+    _advanceMyClockHand(lock);
 
     for (auto& elem : inClock.Obj()) {
         uassert(0,
                 str::stream() << "Wrong type for " << kNodeVectorClockFieldName
                               << " element: " << typeName(elem.type()),
                 elem.isNumber());
+
         _clock[elem.fieldName()] = std::max(_clock[elem.fieldName()], elem.numberLong());
     }
 
     LOGV2(202007191,
           "My node vector clock after receiving message",
-          "self"_attr = _myHostAndPort.toString(),
+          "myPort"_attr = std::to_string(serverGlobalParams.port),
           "nodeVectorClock"_attr = _getClock(lock));
+}
+
+void NodeVectorClock::_advanceMyClockHand(WithLock lk) {
+    _myClockHandValue++;
+    _clock[std::to_string(serverGlobalParams.port)] = _myClockHandValue;
 }
 
 BSONObj NodeVectorClock::_getClock(WithLock lk) {

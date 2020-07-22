@@ -29,6 +29,7 @@
 
 #pragma once
 
+#include <string>
 #include <unordered_map>
 
 #include "mongo/client/query.h"
@@ -38,9 +39,9 @@
 #include "mongo/transport/session.h"
 
 /* Test-only vector clock. Unlike the vector clock we use in production, this is a traditional
- * vector clock whose components are servers. The clock advances whenever a message is sent or
- * received, but not when data is written. This is useful for establishing causation of intracluster
- * messages and state changes, e.g. for visualization with ShiViz. */
+ * vector clock whose components ("hands") are servers. This server's hand advances whenever a
+ * message is sent or received, but not when data is written. This is useful for establishing
+ * causation of intracluster messages and state changes, e.g. for visualization with ShiViz. */
 
 namespace mongo {
 
@@ -52,18 +53,7 @@ public:
     virtual ~NodeVectorClock();
 
     /**
-     * Initialize this server's vector clock entry when loading a replica set config.
-     */
-    void setMyHostAndPort(HostAndPort hostAndPort);
-
-    /**
-     * Uninitialize this server's entry when loading a replica set config that omits self. We can
-     * still send and receive other servers' entries.
-     */
-    void clearMyHostAndPort();
-
-    /**
-     * Returns an instantaneous snapshot of the current vector clock.
+     * Returns the current vector clock as a document containing port: clockHandValue per server.
      */
     BSONObj getClock();
 
@@ -78,12 +68,14 @@ public:
     void gossipIn(const BSONObj& inMessage);
 
 private:
+    void _advanceMyClockHand(WithLock lk);
     BSONObj _getClock(WithLock lk);
 
     mutable Mutex _mutex = MONGO_MAKE_LATCH("NodeVectorClock::_mutex");
     ServiceContext* _service{nullptr};
-    long long _myClock = 1LL;
-    HostAndPort _myHostAndPort;
+    // The first clock hand value we log will be 1.
+    long long _myClockHandValue = 0LL;
+    // Map port numbers (as strings) to clock hand values.
     std::unordered_map<std::string, long long> _clock;
     static constexpr char kNodeVectorClockFieldName[] = "nodeVectorClockForTest";
 };
