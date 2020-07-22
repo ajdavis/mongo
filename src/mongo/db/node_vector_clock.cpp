@@ -75,12 +75,10 @@ void NodeVectorClock::gossipOut(BSONObjBuilder* outMessage) {
 
     {
         stdx::lock_guard<Latch> lock(_mutex);
-        if (_myHostAndPort.host().empty()) {
-            return;
-        }
-
+        if (!_myHostAndPort.host().empty()) {
         _myClock++;
         _clock[_myHostAndPort.toString()] = _myClock;
+        }
 
         clockObj = _getClock(lock);
     }

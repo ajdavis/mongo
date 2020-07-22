@@ -37,6 +37,10 @@
 #include "mongo/platform/mutex.h"
 #include "mongo/transport/session.h"
 
+/* Test-only vector clock. Unlike the vector clock we use in production, this is a traditional
+ * vector clock whose components are servers. The clock advances whenever a message is sent or
+ * received, but not when data is written. This is useful for establishing causation of intracluster
+ * messages and state changes, e.g. for visualization with ShiViz. */
 
 namespace mongo {
 
@@ -64,13 +68,12 @@ public:
     BSONObj getClock();
 
     /**
-     * TODO
+     * Append the node vector clock to outMessage (a request or reply) to send to another server.
      */
     void gossipOut(BSONObjBuilder* outMessage);
+
     /**
-     * Read the necessary fields from inMessage in order to update the current time, based on this
-     * message received from another node, taking into account if the gossiping is from an internal
-     * or external client (based on the session tags).
+     * Read the node vector clock from another server's request or reply.
      */
     void gossipIn(const BSONObj& inMessage);
 
@@ -79,8 +82,7 @@ private:
 
     mutable Mutex _mutex = MONGO_MAKE_LATCH("NodeVectorClock::_mutex");
     ServiceContext* _service{nullptr};
-    // TODO: explain why 2
-    long long _myClock = 2LL;
+    long long _myClock = 1LL;
     HostAndPort _myHostAndPort;
     std::unordered_map<std::string, long long> _clock;
     static constexpr char kNodeVectorClockFieldName[] = "nodeVectorClockForTest";
