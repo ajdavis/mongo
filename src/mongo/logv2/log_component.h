@@ -78,6 +78,7 @@ namespace mongo::logv2 {
     X(kTransaction,            , "transaction"           , "TXN"     , kDefault) \
     X(kConnectionPool,         , "connectionPool"        , "CONNPOOL", kNetwork) \
     X(kTest,                   , "test"                  , "TEST"    , kDefault) \
+    X(kNodeVectorClock,        , "nodeVectorClock"       , "VECCLOCK", kDefault) \
     X(kNumLogComponents,       , "total"                 , "TOTAL"   , kNumLogComponents) \
     /**/
 // clang-format on

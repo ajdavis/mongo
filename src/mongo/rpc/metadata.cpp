@@ -37,6 +37,7 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/db/logical_clock.h"
 #include "mongo/db/logical_time_validator.h"
+#include "mongo/db/node_vector_clock.h"
 #include "mongo/db/vector_clock.h"
 #include "mongo/rpc/metadata/client_metadata_ismaster.h"
 #include "mongo/rpc/metadata/config_server_metadata.h"
@@ -106,6 +107,7 @@ void readRequestMetadata(OperationContext* opCtx,
         uassertStatusOK(TrackingMetadata::readFromMetadata(trackingElem));
 
     VectorClock::get(opCtx)->gossipIn(opCtx, metadataObj, !cmdRequiresAuth);
+    NodeVectorClock::get(opCtx->getServiceContext())->gossipIn(metadataObj);
 }
 
 namespace {

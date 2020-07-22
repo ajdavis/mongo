@@ -79,7 +79,8 @@ private:
 
     mutable Mutex _mutex = MONGO_MAKE_LATCH("NodeVectorClock::_mutex");
     ServiceContext* _service{nullptr};
-    long long _myClock = 0LL;
+    // TODO: explain why 2
+    long long _myClock = 2LL;
     HostAndPort _myHostAndPort;
     std::unordered_map<std::string, long long> _clock;
     static constexpr char kNodeVectorClockFieldName[] = "nodeVectorClockForTest";

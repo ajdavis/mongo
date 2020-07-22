@@ -27,7 +27,7 @@
  *    it in the license file.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplication
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kNodeVectorClock
 
 #include "mongo/platform/basic.h"
 
@@ -75,13 +75,21 @@ void NodeVectorClock::gossipOut(BSONObjBuilder* outMessage) {
 
     {
         stdx::lock_guard<Latch> lock(_mutex);
-        if (!_myHostAndPort.empty()) {
-            _myClock++;
-            _clock[_myHostAndPort.toString()] = _myClock;
+        if (_myHostAndPort.host().empty()) {
+            return;
         }
+
+        _myClock++;
+        _clock[_myHostAndPort.toString()] = _myClock;
 
         clockObj = _getClock(lock);
     }
+
+    LOGV2(202007190,
+          "Sending node vector clock",
+          "nodeVectorClock"_attr = clockObj,
+          "self"_attr = _myHostAndPort.toString(),
+          "message"_attr = outMessage->asTempObj());
 
     outMessage->append(kNodeVectorClockFieldName, clockObj);
 }
@@ -92,11 +100,17 @@ void NodeVectorClock::gossipIn(const BSONObj& inMessage) {
         return;
     }
 
-    stdx::lock_guard<Latch> lock(_mutex);
     uassert(0,
             str::stream() << "Wrong type for " << kNodeVectorClockFieldName << ": "
                           << typeName(inClock.type()),
             inClock.isABSONObj());
+
+    stdx::lock_guard<Latch> lock(_mutex);
+    if (_myHostAndPort.host().empty()) {
+        return;
+    }
+
+    _myClock++;
 
     for (auto& elem : inClock.Obj()) {
         uassert(0,
@@ -105,6 +119,11 @@ void NodeVectorClock::gossipIn(const BSONObj& inMessage) {
                 elem.isNumber());
         _clock[elem.fieldName()] = std::max(_clock[elem.fieldName()], elem.numberLong());
     }
+
+    LOGV2(202007191,
+          "My node vector clock after receiving message",
+          "self"_attr = _myHostAndPort.toString(),
+          "nodeVectorClock"_attr = _getClock(lock));
 }
 
 BSONObj NodeVectorClock::_getClock(WithLock lk) {
