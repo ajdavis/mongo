@@ -39,9 +39,10 @@
 #include "mongo/transport/session.h"
 
 /* Test-only vector clock. Unlike the vector clock we use in production, this is a traditional
- * vector clock whose components ("hands") are servers. This server's hand advances whenever a
- * message is sent or received, but not when data is written. This is useful for establishing
- * causation of intracluster messages and state changes, e.g. for visualization with ShiViz. */
+ * vector clock whose components ("hands") are servers. This server's hand advances whenever an
+ * intra-cluster message is sent or received, but not when data is written. This is useful for
+ * establishing causation of intra-cluster messages and state changes, e.g. for visualization with
+ * ShiViz. */
 
 namespace mongo {
 
@@ -53,19 +54,14 @@ public:
     virtual ~NodeVectorClock();
 
     /**
-     * Returns the current vector clock as a document containing port: clockHandValue per server.
-     */
-    BSONObj getClock();
-
-    /**
      * Append the node vector clock to outMessage (a request or reply) to send to another server.
      */
-    void gossipOut(BSONObjBuilder* outMessage);
+    void gossipOut(OperationContext* opCtx, BSONObjBuilder* outMessage);
 
     /**
      * Read the node vector clock from another server's request or reply.
      */
-    void gossipIn(const BSONObj& inMessage);
+    void gossipIn(OperationContext* opCtx, const BSONObj& inMessage);
 
 private:
     void _advanceMyClockHand(WithLock lk);

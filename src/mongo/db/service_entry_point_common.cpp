@@ -442,8 +442,6 @@ void appendClusterAndOperationTime(OperationContext* opCtx,
         return;
     }
 
-    NodeVectorClock::get(opCtx->getServiceContext())->gossipOut(metadataBob);
-
     if (!VectorClock::get(opCtx)->isEnabled()) {
         return;
     }
@@ -892,6 +890,9 @@ bool runCommandImpl(OperationContext* opCtx,
     auto commandBodyBob = replyBuilder->getBodyBuilder();
     behaviors.appendReplyMetadata(opCtx, request, &commandBodyBob);
     appendClusterAndOperationTime(opCtx, &commandBodyBob, &commandBodyBob, startOperationTime);
+    if (command->getName() != "isMaster") {
+        NodeVectorClock::get(opCtx->getServiceContext())->gossipOut(opCtx, &commandBodyBob);
+    }
     return ok;
 }
 

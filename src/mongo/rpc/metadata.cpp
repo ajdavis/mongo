@@ -107,7 +107,7 @@ void readRequestMetadata(OperationContext* opCtx,
         uassertStatusOK(TrackingMetadata::readFromMetadata(trackingElem));
 
     VectorClock::get(opCtx)->gossipIn(opCtx, metadataObj, !cmdRequiresAuth);
-    NodeVectorClock::get(opCtx->getServiceContext())->gossipIn(metadataObj);
+    NodeVectorClock::get(opCtx->getServiceContext())->gossipIn(opCtx, metadataObj);
 }
 
 namespace {

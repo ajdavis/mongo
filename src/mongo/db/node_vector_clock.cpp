@@ -39,6 +39,30 @@
 
 namespace mongo {
 
+namespace {
+
+bool isInternalClient(OperationContext* opCtx) {
+    // TODO: HACK: generally true that internal commands like heartbeat requests have no opCtx?
+    if (!opCtx) {
+        return true;
+    }
+
+    auto client = opCtx->getClient();
+    fassert(0, client);
+    if (client->isInDirectClient()) {
+        LOGV2(0, "Ignore direct client");
+        return false;
+    }
+
+    if (client->getSessionTags() & transport::Session::kInternalClient) {
+        return true;
+    }
+
+    return false;
+}
+
+}  // namespace
+
 const ServiceContext::Decoration<NodeVectorClock> forService =
     ServiceContext::declareDecoration<NodeVectorClock>();
 
@@ -50,12 +74,11 @@ NodeVectorClock::NodeVectorClock() = default;
 
 NodeVectorClock::~NodeVectorClock() = default;
 
-BSONObj NodeVectorClock::getClock() {
-    stdx::lock_guard<Latch> lock(_mutex);
-    return _getClock(lock);
-}
+void NodeVectorClock::gossipOut(OperationContext* opCtx, BSONObjBuilder* outMessage) {
+    if (!isInternalClient(opCtx)) {
+        return;
+    }
 
-void NodeVectorClock::gossipOut(BSONObjBuilder* outMessage) {
     auto replCoord = repl::ReplicationCoordinator::get(getGlobalServiceContext());
     if (!replCoord) {
         return;
@@ -78,7 +101,11 @@ void NodeVectorClock::gossipOut(BSONObjBuilder* outMessage) {
     outMessage->append(kNodeVectorClockFieldName, clockObj);
 }
 
-void NodeVectorClock::gossipIn(const BSONObj& inMessage) {
+void NodeVectorClock::gossipIn(OperationContext* opCtx, const BSONObj& inMessage) {
+    if (!isInternalClient(opCtx)) {
+        return;
+    }
+
     auto inClock = inMessage[kNodeVectorClockFieldName];
     if (inClock.eoo()) {
         return;
