@@ -147,7 +147,7 @@ void ReplicationCoordinatorImpl::handleHeartbeatResponse_forTest(BSONObj respons
     CallbackHandle handle;
     RemoteCommandRequest request;
     request.target = _rsConfig.getMemberAt(targetIndex).getHostAndPort();
-    executor::TaskExecutor::ResponseStatus status(response, ping);
+    executor::TaskExecutor::ResponseStatus status(response, ping, 0, 0);
     executor::TaskExecutor::RemoteCommandCallbackArgs cbData(
         _replExecutor.get(), handle, request, status);
 

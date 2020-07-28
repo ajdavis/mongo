@@ -114,7 +114,8 @@ Future<executor::TaskExecutor::ResponseStatus> AsyncWorkScheduler::scheduleRemot
             // 'ResponseStatus' is the response format of a remote request sent over the network
             // so we simulate that format manually here, since we sent the request over the
             // loopback.
-            return ResponseStatus{replyOpMsg.body.getOwned(), _executor->now() - start};
+            // TODO: messageId and responseTo
+            return ResponseStatus{replyOpMsg.body.getOwned(), _executor->now() - start, 0, 0};
         });
     }
 

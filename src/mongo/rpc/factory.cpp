@@ -59,7 +59,7 @@ Message messageFromOpMsgRequest(Protocol proto, const OpMsgRequest& request) {
 std::unique_ptr<ReplyInterface> makeReply(const Message* unownedMessage) {
     switch (unownedMessage->operation()) {
         case mongo::dbMsg:
-            return std::make_unique<OpMsgReply>(OpMsg::parseOwned(*unownedMessage));
+            return std::make_unique<OpMsgReply>(unownedMessage);
         case mongo::opReply:
             return std::make_unique<LegacyReply>(unownedMessage);
         default:

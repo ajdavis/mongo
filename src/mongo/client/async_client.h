@@ -63,6 +63,8 @@ public:
     Future<executor::RemoteCommandResponse> runCommandRequest(
         executor::RemoteCommandRequest request, const BatonHandle& baton = nullptr);
     Future<rpc::UniqueReply> runCommand(OpMsgRequest request,
+                                        uint64_t requestId,
+                                        HostAndPort target,
                                         const BatonHandle& baton = nullptr,
                                         bool fireAndForget = false);
 

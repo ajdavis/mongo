@@ -38,8 +38,12 @@ namespace rpc {
 
 class OpMsgReply final : public rpc::ReplyInterface {
 public:
-    explicit OpMsgReply(const Message* message) : _msg(OpMsg::parseOwned(*message)) {}
-    explicit OpMsgReply(OpMsg msg) : _msg(std::move(msg)) {}
+    explicit OpMsgReply(const Message* message)
+        : _msg(OpMsg::parseOwned(*message)),
+          _messageId(message->header().getId()),
+          _responseTo(message->header().getResponseToMsgId()) {}
+    explicit OpMsgReply(OpMsg msg, int32_t messageId, int32_t responseTo)  // TODO: delete?
+        : _msg(std::move(msg)), _messageId(messageId), _responseTo(responseTo) {}
     const BSONObj& getCommandReply() const override {
         return _msg.body;
     }
@@ -47,8 +51,18 @@ public:
         return rpc::Protocol::kOpMsg;
     }
 
+    virtual int32_t getMessageId() const {
+        return _messageId;
+    }
+
+    virtual int32_t getResponseTo() const {
+        return _responseTo;
+    }
+
 private:
     OpMsg _msg;
+    int32_t _messageId;
+    int32_t _responseTo;
 };
 
 class OpMsgReplyBuilder final : public rpc::ReplyBuilderInterface {

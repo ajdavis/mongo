@@ -55,10 +55,26 @@ public:
      */
     const BSONObj& getCommandReply() const final;
 
+    /**
+     * TODO
+     */
+    virtual int32_t getMessageId() const {
+        return _messageId;
+    }
+
+    /**
+     * TODO
+     */
+    virtual int32_t getResponseTo() const {
+        return _responseTo;
+    }
+
     Protocol getProtocol() const final;
 
 private:
     BSONObj _commandReply;
+    int32_t _messageId;
+    int32_t _responseTo;
 };
 
 }  // namespace rpc

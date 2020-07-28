@@ -97,7 +97,8 @@ LegacyReply::LegacyReply(const Message* message) {
         _commandReply = bob.obj();
     }
 
-    return;
+    _messageId = message->header().getId();
+    _responseTo = message->header().getResponseToMsgId();
 }
 
 const BSONObj& LegacyReply::getCommandReply() const {

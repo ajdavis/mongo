@@ -58,6 +58,16 @@ public:
      */
     virtual Protocol getProtocol() const = 0;
 
+    /**
+     * TODO
+     */
+    virtual int32_t getMessageId() const = 0;
+
+    /**
+     * TODO
+     */
+    virtual int32_t getResponseTo() const = 0;
+
 protected:
     ReplyInterface() = default;
 };

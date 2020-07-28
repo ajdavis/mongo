@@ -495,6 +495,13 @@ void ServiceStateMachine::_processMessage(ThreadGuard guard) {
 #endif
         }
 
+        LOGV2_DEBUG(202007262,
+                    2,
+                    "_processMessage replying",
+                    "messageId"_attr = toSink.header().getId(),
+                    "responseTo"_attr = toSink.header().getResponseToMsgId(),
+                    "remote"_attr = _session()->remote());
+
         // If the incoming message has the exhaust flag set, then we bypass the normal RPC behavior.
         // We will sink the response to the network, but we also synthesize a new request, as if we
         // sourced a new message from the network. This new request is sent to the database once

@@ -1346,7 +1346,8 @@ DbResponse receivedCommands(OperationContext* opCtx,
                         "About to run the command",
                         "db"_attr = request.getDatabase(),
                         "commandArgs"_attr = redact(
-                            ServiceEntryPointCommon::getRedactedCopyForLogging(c, request.body)));
+                            ServiceEntryPointCommon::getRedactedCopyForLogging(c, request.body)),
+                        "messageId"_attr = message.header().getId());
 
             {
                 // Try to set this as early as possible, as soon as we have figured out the

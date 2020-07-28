@@ -254,7 +254,7 @@ public:
 
         const auto millisElapsed = timer.millis();
 
-        executor::RemoteCommandResponse response(bob.obj(), Milliseconds(millisElapsed));
+        executor::RemoteCommandResponse response(bob.obj(), Milliseconds(millisElapsed), 0, 0);
 
         // We fetch an arbitrary host from the ConnectionString, since
         // ClusterExplain::buildExplainResult() doesn't use the given HostAndPort.

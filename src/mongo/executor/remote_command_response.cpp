@@ -57,10 +57,13 @@ RemoteCommandResponseBase::RemoteCommandResponseBase(Status s, Milliseconds mill
     invariant(!isOK());
 };
 
-RemoteCommandResponseBase::RemoteCommandResponseBase(BSONObj dataObj,
-                                                     Milliseconds millis,
-                                                     bool moreToCome)
-    : data(std::move(dataObj)), elapsedMillis(millis), moreToCome(moreToCome) {
+RemoteCommandResponseBase::RemoteCommandResponseBase(
+    BSONObj dataObj, Milliseconds millis, int32_t messageId, int32_t responseTo, bool moreToCome)
+    : data(std::move(dataObj)),
+      elapsedMillis(millis),
+      moreToCome(moreToCome),
+      messageId(messageId),
+      responseTo(responseTo) {
     // The buffer backing the default empty BSONObj has static duration so it is effectively
     // owned.
     invariant(data.isOwned() || data.objdata() == BSONObj().objdata());
@@ -71,7 +74,11 @@ RemoteCommandResponseBase::RemoteCommandResponseBase(BSONObj dataObj,
 RemoteCommandResponseBase::RemoteCommandResponseBase(const rpc::ReplyInterface& rpcReply,
                                                      Milliseconds millis,
                                                      bool moreToCome)
-    : RemoteCommandResponseBase(rpcReply.getCommandReply(), std::move(millis), moreToCome) {}
+    : RemoteCommandResponseBase(rpcReply.getCommandReply(),
+                                std::move(millis),
+                                moreToCome,
+                                rpcReply.getMessageId(),
+                                rpcReply.getResponseTo()) {}
 
 bool RemoteCommandResponseBase::isOK() const {
     return status.isOK();
@@ -82,10 +89,14 @@ std::string RemoteCommandResponse::toString() const {
                              " cmd: {}"
                              " status: {}"
                              " elapsedMillis: {}"
+                             " messageId: {}"
+                             " responseTo: {}"
                              " moreToCome: {}"),
                   data.toString(),
                   status.toString(),
                   elapsedMillis ? StringData(elapsedMillis->toString()) : "n/a"_sd,
+                  messageId,
+                  responseTo,
                   moreToCome);
 }
 
@@ -127,10 +138,10 @@ RemoteCommandOnAnyResponse::RemoteCommandOnAnyResponse(boost::optional<HostAndPo
                                                        Milliseconds millis)
     : RemoteCommandResponseBase(std::move(s), millis), target(std::move(hp)) {}
 
-RemoteCommandOnAnyResponse::RemoteCommandOnAnyResponse(HostAndPort hp,
-                                                       BSONObj dataObj,
-                                                       Milliseconds millis)
-    : RemoteCommandResponseBase(std::move(dataObj), millis), target(std::move(hp)) {}
+RemoteCommandOnAnyResponse::RemoteCommandOnAnyResponse(
+    HostAndPort hp, BSONObj dataObj, int32_t messageId, int32_t responseTo, Milliseconds millis)
+    : RemoteCommandResponseBase(std::move(dataObj), millis, messageId, responseTo),
+      target(std::move(hp)) {}
 
 RemoteCommandOnAnyResponse::RemoteCommandOnAnyResponse(HostAndPort hp,
                                                        const rpc::ReplyInterface& rpcReply,
@@ -160,11 +171,15 @@ std::string RemoteCommandOnAnyResponse::toString() const {
                              " target: {}"
                              " status: {}"
                              " elapsedMillis: {}"
+                             " messageId: {}"
+                             " responseTo: {}"
                              " moreToCome: {}"),
                   data.toString(),
                   target ? StringData(target->toString()) : "[none]"_sd,
                   status.toString(),
                   elapsedMillis ? StringData(elapsedMillis.get().toString()) : "n/a"_sd,
+                  messageId,
+                  responseTo,
                   moreToCome);
 }
 

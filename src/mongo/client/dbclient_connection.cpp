@@ -239,7 +239,8 @@ executor::RemoteCommandResponse initWireVersion(
 
     conn->getCompressorManager().clientFinish(isMasterObj);
 
-    return executor::RemoteCommandResponse{std::move(isMasterObj), finish - start};
+    return executor::RemoteCommandResponse{
+        std::move(isMasterObj), finish - start, result->getMessageId(), result->getResponseTo()};
 
 } catch (...) {
     return exceptionToStatus();

@@ -138,15 +138,16 @@ void AsyncDBClient::_parseIsMasterResponse(BSONObj request,
 }
 
 auth::RunCommandHook AsyncDBClient::_makeAuthRunCommandHook() {
-    return [this](OpMsgRequest request) {
-        return runCommand(std::move(request)).then([](rpc::UniqueReply reply) -> Future<BSONObj> {
-            auto status = getStatusFromCommandResult(reply->getCommandReply());
-            if (!status.isOK()) {
-                return status;
-            } else {
-                return reply->getCommandReply();
-            }
-        });
+    return [this, target = _peer](OpMsgRequest request) {
+        return runCommand(std::move(request), 0 /* requestId */, target)
+            .then([](rpc::UniqueReply reply) -> Future<BSONObj> {
+                auto status = getStatusFromCommandResult(reply->getCommandReply());
+                if (!status.isOK()) {
+                    return status;
+                } else {
+                    return reply->getCommandReply();
+                }
+            });
     };
 }
 
@@ -279,6 +280,8 @@ Future<Message> AsyncDBClient::_waitForResponse(boost::optional<int32_t> msgId,
 }
 
 Future<rpc::UniqueReply> AsyncDBClient::runCommand(OpMsgRequest request,
+                                                   uint64_t requestId,
+                                                   HostAndPort target,
                                                    const BatonHandle& baton,
                                                    bool fireAndForget) {
     invariant(_negotiatedProtocol);
@@ -287,6 +290,14 @@ Future<rpc::UniqueReply> AsyncDBClient::runCommand(OpMsgRequest request,
         OpMsg::setFlag(&requestMsg, OpMsg::kMoreToCome);
     }
     auto msgId = nextMessageId();
+    LOGV2_DEBUG(202007260,
+                2,
+                "AsyncDBClient::runCommand sending request",
+                "db"_attr = request.getDatabase(),
+                "remote"_attr = target,
+                "commandArgs"_attr = request.body,
+                "requestId"_attr = requestId,
+                "messageId"_attr = msgId);
     auto future = _call(std::move(requestMsg), msgId, baton);
 
     if (fireAndForget) {
@@ -316,8 +327,17 @@ Future<executor::RemoteCommandResponse> AsyncDBClient::runCommandRequest(
         std::move(request.dbname), std::move(request.cmdObj), std::move(request.metadata));
     auto fireAndForget =
         request.fireAndForgetMode == executor::RemoteCommandRequest::FireAndForgetMode::kOn;
-    return runCommand(std::move(opMsgRequest), baton, fireAndForget)
-        .then([start, clkSource, this](rpc::UniqueReply response) {
+    return runCommand(std::move(opMsgRequest), request.id, request.target, baton, fireAndForget)
+        .then([start, clkSource, requestId = request.id, target = request.target, this](
+                  rpc::UniqueReply response) {
+            LOGV2_DEBUG(202007261,
+                        2,
+                        "AsyncDBClient::runCommandRequest got reply",
+                        "remote"_attr = target,
+                        "response"_attr = response->getCommandReply(),
+                        "requestId"_attr = requestId,
+                        "messageId"_attr = response->getMessageId(),
+                        "responseTo"_attr = response->getResponseTo());
             auto duration = duration_cast<Milliseconds>(clkSource->now() - start);
             return executor::RemoteCommandResponse(*response, duration);
         });
