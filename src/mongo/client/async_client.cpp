@@ -231,10 +231,26 @@ Future<void> AsyncDBClient::initWireVersion(const std::string& appName,
     auto start = clkSource->now();
 
     auto msgId = nextMessageId();
+
+    LOGV2_DEBUG(202007263,
+                2,
+                "AsyncDBClient::_call sending",
+                "remote"_attr = _peer,
+                "commandArgs"_attr = requestObj,
+                "messageId"_attr = msgId);
+
     return _call(requestMsg, msgId)
         .then([msgId, this]() { return _waitForResponse(msgId); })
         .then([this, requestObj, hook, clkSource, start](Message response) {
             auto cmdReply = rpc::makeReply(&response);
+            LOGV2_DEBUG(202007264,
+                        2,
+                        "AsyncDBClient::runCommandRequest got reply",
+                        "remote"_attr = _peer,
+                        "response"_attr = cmdReply->getCommandReply(),
+                        "messageId"_attr = response.header().getId(),
+                        "responseTo"_attr = response.header().getResponseToMsgId());
+
             _parseIsMasterResponse(requestObj, cmdReply);
             if (hook) {
                 auto millis = duration_cast<Milliseconds>(clkSource->now() - start);
