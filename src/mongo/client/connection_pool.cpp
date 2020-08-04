@@ -188,7 +188,8 @@ ConnectionPool::ConnectionList::iterator ConnectionPool::acquireConnection(
     // the number of seconds with a fractional part.
     conn->setSoTimeout(durationCount<Milliseconds>(timeout) / 1000.0);
 
-    uassertStatusOK(conn->connect(target, StringData()));
+    // TODO: Add _applicationName to ClientConnectionPool.
+    uassertStatusOK(conn->connect(target, "ClientConnectionPool"));
     conn->setTags(_messagingPortTags);
 
     if (auth::isInternalAuthSet()) {

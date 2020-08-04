@@ -393,6 +393,7 @@ Status ClientMetadata::serializePrivate(StringData driverName,
 
     {
         BSONObjBuilder metaObjBuilder(builder->subobjStart(kMetadataDocumentName));
+        fassert(0, !appName.empty());
 
         if (!appName.empty()) {
             BSONObjBuilder subObjBuilder(metaObjBuilder.subobjStart(kApplication));
