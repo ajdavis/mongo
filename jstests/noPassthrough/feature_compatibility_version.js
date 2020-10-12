@@ -76,17 +76,17 @@ checkFCV(adminDB, latestFCV);
 // Updating the featureCompatibilityVersion document with an invalid targetVersion fails.
 assert.writeErrorWithCode(adminDB.system.version.update({_id: "featureCompatibilityVersion"},
                                                         {$set: {targetVersion: lastLTSFCV}}),
-                          4926904);
+                          5147400);
 checkFCV(adminDB, latestFCV);
 
 assert.writeErrorWithCode(adminDB.system.version.update({_id: "featureCompatibilityVersion"},
                                                         {$set: {targetVersion: lastContinuousFCV}}),
-                          4926904);
+                          5147400);
 checkFCV(adminDB, latestFCV);
 
 assert.writeErrorWithCode(adminDB.system.version.update({_id: "featureCompatibilityVersion"},
                                                         {$set: {targetVersion: latestFCV}}),
-                          4926904);
+                          5147400);
 checkFCV(adminDB, latestFCV);
 
 // Setting an unknown field.
