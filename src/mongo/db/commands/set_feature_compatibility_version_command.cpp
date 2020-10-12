@@ -58,6 +58,7 @@
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/catalog/type_collection.h"
 #include "mongo/s/database_version_helpers.h"
+#include "mongo/stdx/unordered_set.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/scopeguard.h"
@@ -66,6 +67,7 @@ namespace mongo {
 
 using FCVP = FeatureCompatibilityVersionParser;
 using FeatureCompatibilityParams = ServerGlobalParams::FeatureCompatibility;
+using FCVVersion = FeatureCompatibilityParams::Version;
 
 namespace {
 
@@ -94,86 +96,61 @@ void deletePersistedDefaultRWConcernDocument(OperationContext* opCtx) {
     uassertStatusOK(getStatusFromWriteCommandReply(commandResponse->getCommandReply()));
 }
 
-Status validateDowngradeRequest(FeatureCompatibilityParams::Version actualVersion,
-                                FeatureCompatibilityParams::Version requestedVersion) {
-    if (actualVersion == FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest ||
-        actualVersion == FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest) {
-        return Status(ErrorCodes::IllegalOperation,
-                      "cannot downgrade featureCompatibilityVersion while a previous "
-                      "featureCompatibilityVersion upgrade has not completed.");
-    }
+// TODO: explain, especially regarding when lastContinuous == lastLTS
+static stdx::unordered_set<std::tuple<FCVVersion, FCVVersion, bool>> FCVTransitions{
+    // Upgrade from last-lts to latest:
+    std::make_tuple(FeatureCompatibilityParams::kLastLTS,
+                    FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest,
+                    false),
+    std::make_tuple(FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest,
+                    FeatureCompatibilityParams::kLatest,
+                    false),
 
-    const auto lastLTSFCV = FeatureCompatibilityParams::kLastLTS;
-    const auto lastContFCV = FeatureCompatibilityParams::kLastContinuous;
-    if (lastLTSFCV == lastContFCV) {
+    // Upgrade from last-continuous to latest:
+    std::make_tuple(FeatureCompatibilityParams::kLastContinuous,
+                    FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest,
+                    false),
+    std::make_tuple(FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest,
+                    FeatureCompatibilityParams::kLatest,
+                    false),
+
+    // Downgrade from latest to last-lts:
+    std::make_tuple(FeatureCompatibilityParams::kLatest,
+                    FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
+                    false),
+    std::make_tuple(FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
+                    FeatureCompatibilityParams::kLastLTS,
+                    false),
+
+    // Downgrade from latest to last-continuous:
+    std::make_tuple(FeatureCompatibilityParams::kLatest,
+                    FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
+                    false),
+    std::make_tuple(FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
+                    FeatureCompatibilityParams::kLastContinuous,
+                    false),
+
+    // Upgrade from last-lts to last-continuous (permitted from config server):
+    std::make_tuple(FeatureCompatibilityParams::kLastLTS,
+                    FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
+                    true),
+    std::make_tuple(FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
+                    FeatureCompatibilityParams::kLastContinuous,
+                    true),
+};
+
+Status validateFCVChangeRequest(FCVVersion actualVersion,
+                                FCVVersion requestedVersion,
+                                bool isFromConfigServer) {
+    if (FCVTransitions.contains(std::tuple(actualVersion, requestedVersion, isFromConfigServer))) {
         return Status::OK();
     }
 
-    if ((requestedVersion == lastLTSFCV &&
-         actualVersion == FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous) ||
-        (requestedVersion == lastContFCV &&
-         actualVersion == FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS)) {
-        return Status(ErrorCodes::IllegalOperation,
-                      str::stream()
-                          << "cannot downgrade featureCompatibilityVersion to "
-                          << FCVP::toString(requestedVersion)
-                          << " while a previous featureCompatibilityVersion downgrade to a "
-                             "different target version has not yet completed.");
-    }
-
-    // We don't support upgrading/downgrading between last-lts and last-continuous FCV.
-    if ((requestedVersion == lastLTSFCV && actualVersion == lastContFCV) ||
-        (requestedVersion == lastContFCV && actualVersion == lastLTSFCV)) {
-        return Status(ErrorCodes::IllegalOperation,
-                      str::stream() << "cannot set featureCompatibilityVersion to "
-                                    << FCVP::toString(requestedVersion)
-                                    << " while in featureCompatibilityVersion "
-                                    << FCVP::toString(actualVersion) << ".");
-    }
-
-    return Status::OK();
-}
-
-Status validateUpgradeRequest(FeatureCompatibilityParams::Version actualVersion,
-                              FeatureCompatibilityParams::Version requestedVersion,
-                              boost::optional<bool> fromConfigServer) {
-    invariant(actualVersion < requestedVersion);
-
-    if (actualVersion == FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS ||
-        actualVersion == FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous) {
-        return Status(ErrorCodes::IllegalOperation,
-                      str::stream() << "cannot initiate featureCompatibilityVersion upgrade to "
-                                    << FCVP::toString(requestedVersion)
-                                    << " while a previous featureCompatibilityVersion downgrade to "
-                                    << FCVP::kLastLTS << " or " << FCVP::kLastContinuous
-                                    << " has not completed. Finish downgrade then upgrade to "
-                                    << FCVP::kLatest);
-    }
-
-    if ((actualVersion == FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest &&
-         requestedVersion == FeatureCompatibilityParams::kLastContinuous) ||
-        (actualVersion == FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous &&
-         requestedVersion == FeatureCompatibilityParams::kLatest)) {
-        auto incompleteUpgradeVersionString =
-            actualVersion == FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest
-            ? FCVP::kLatest
-            : FCVP::kLastContinuous;
-        return Status(ErrorCodes::Error(5070602),
-                      str::stream()
-                          << "cannot initiate featureCompatibilityVersion upgrade to "
-                          << FCVP::toString(requestedVersion) << " while a previous upgrade to "
-                          << incompleteUpgradeVersionString
-                          << " has not yet completed. Finish upgrade then try again.");
-    }
-
-    if (requestedVersion == FeatureCompatibilityParams::kLastContinuous &&
-        !fromConfigServer.get_value_or(false)) {
-        return Status(ErrorCodes::Error(5070603),
-                      str::stream() << "cannot initiate featureCompatibilityVersion upgrade from "
-                                    << FCVP::kLastLTS << " to " << FCVP::kLastContinuous << ".");
-    }
-
-    return Status::OK();
+    return Status(ErrorCodes::IllegalOperation,
+                  str::stream() << "cannot set featureCompatibilityVersion to "
+                                << FCVP::toString(requestedVersion)
+                                << " while in featureCompatibilityVersion "
+                                << FCVP::toString(actualVersion) << ".");
 }
 
 /**
@@ -267,8 +244,7 @@ public:
             IDLParserErrorContext("setFeatureCompatibilityVersion"), cmdObj);
         const auto requestedVersion = request.getCommandParameter();
         const auto requestedVersionString = FCVP::serializeVersion(requestedVersion);
-        FeatureCompatibilityParams::Version actualVersion =
-            serverGlobalParams.featureCompatibility.getVersion();
+        FCVVersion actualVersion = serverGlobalParams.featureCompatibility.getVersion();
         if (request.getDowngradeOnDiskChanges() &&
             (requestedVersion != FeatureCompatibilityParams::kLastContinuous ||
              actualVersion < requestedVersion)) {
@@ -288,10 +264,10 @@ public:
             return true;
         }
 
-        if (actualVersion < requestedVersion) {
-            uassertStatusOK(validateUpgradeRequest(
-                actualVersion, requestedVersion, request.getFromConfigServer()));
+        uassertStatusOK(validateFCVChangeRequest(
+            actualVersion, requestedVersion, request.getFromConfigServer().value_or(false)));
 
+        if (actualVersion < requestedVersion) {
             FeatureCompatibilityVersion::setTargetUpgradeFrom(
                 opCtx, actualVersion, requestedVersion);
             {
@@ -326,8 +302,6 @@ public:
             hangWhileUpgrading.pauseWhileSet(opCtx);
             FeatureCompatibilityVersion::unsetTargetUpgradeOrDowngrade(opCtx, requestedVersion);
         } else {
-            uassertStatusOK(validateDowngradeRequest(actualVersion, requestedVersion));
-
             auto replCoord = repl::ReplicationCoordinator::get(opCtx);
             const bool isReplSet =
                 replCoord->getReplicationMode() == repl::ReplicationCoordinator::modeReplSet;
