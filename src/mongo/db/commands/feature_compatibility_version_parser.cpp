@@ -31,8 +31,6 @@
 
 #include "mongo/db/commands/feature_compatibility_version_parser.h"
 
-#include <fmt/format.h>
-
 #include "mongo/base/status.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/commands/feature_compatibility_version_document_gen.h"
@@ -40,8 +38,6 @@
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
-
-using namespace fmt::literals;
 
 using FeatureCompatibilityParams = ServerGlobalParams::FeatureCompatibility;
 
@@ -87,45 +83,6 @@ StringData FeatureCompatibilityVersionParser::serializeVersion(
     MONGO_UNREACHABLE
 }
 
-FeatureCompatibilityParams::Version FeatureCompatibilityVersionParser::fromCurrentAndTargetVersion(
-    FeatureCompatibilityParams::Version current,
-    boost::optional<FeatureCompatibilityParams::Version> target,
-    bool isFromConfigServer) {
-    if (!target) {
-        return current;
-    }
-
-    // Downgrading.
-    if (current == FeatureCompatibilityParams::kLastLTS &&
-        target == FeatureCompatibilityParams::kLastLTS) {
-        return FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS;
-    }
-    if (current == FeatureCompatibilityParams::kLastContinuous &&
-        target == FeatureCompatibilityParams::kLastContinuous) {
-        return FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous;
-    }
-
-    // Upgrading.
-    if (current == FeatureCompatibilityParams::kLastLTS &&
-        target == FeatureCompatibilityParams::kLatest) {
-        return FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest;
-    }
-    if (current == FeatureCompatibilityParams::kLastContinuous &&
-        target == FeatureCompatibilityParams::kLatest) {
-        return FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest;
-    }
-    if (current == FeatureCompatibilityParams::kLastLTS &&
-        target == FeatureCompatibilityParams::kLastContinuous && isFromConfigServer &&
-        kLastLTS != kLastContinuous) {
-        return FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous;
-    }
-
-    uasserted(
-        5147400,
-        "Cannot transition from feature compatibility version {} to {}"_format(current, *target));
-}
-
-
 Status FeatureCompatibilityVersionParser::validatePreviousVersionField(
     FeatureCompatibilityParams::Version version) {
     if (version == FeatureCompatibilityParams::kLatest) {
@@ -144,6 +101,8 @@ StatusWith<FeatureCompatibilityParams::Version> FeatureCompatibilityVersionParse
         auto version = fcvDoc.getVersion();
         auto targetVersion = fcvDoc.getTargetVersion();
         auto previousVersion = fcvDoc.getPreviousVersion();
+
+        // Downgrading FCV.
         if ((version == FeatureCompatibilityParams::kLastLTS ||
              version == FeatureCompatibilityParams::kLastContinuous) &&
             version == targetVersion) {
@@ -160,8 +119,16 @@ StatusWith<FeatureCompatibilityParams::Version> FeatureCompatibilityVersionParse
                                   << feature_compatibility_version_documentation::kCompatibilityLink
                                   << ".");
             }
-        } else if (previousVersion) {
-            // Non-downgrading FCV must not have a "previousVersion" field.
+            if (version == FeatureCompatibilityParams::kLastLTS) {
+                // Downgrading to last-lts.
+                return FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS;
+            } else {
+                return FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous;
+            }
+        }
+
+        // Non-downgrading FCV must not have a "previousVersion" field.
+        if (previousVersion) {
             return Status(ErrorCodes::Error(4926903),
                           str::stream()
                               << "Unexpected field "
@@ -174,10 +141,40 @@ StatusWith<FeatureCompatibilityParams::Version> FeatureCompatibilityVersionParse
                               << ".");
         }
 
-        // Set isFromConfigServer true to permit extraordinary transitions, in case this doc's
-        // source was a config server request.
-        // TODO: need isFromConfigServer?
-        return fromCurrentAndTargetVersion(version, targetVersion, /* isFromConfigServer */ true);
+        // Upgrading FCV.
+        if (targetVersion) {
+            // For upgrading FCV, "targetVersion" must be kLatest or kLastContinuous and "version"
+            // must be kLastContinuous or kLastLTS.
+            if (targetVersion == FeatureCompatibilityParams::kLastLTS ||
+                version == ServerGlobalParams::FeatureCompatibility::kLatest) {
+                return Status(ErrorCodes::Error(4926904),
+                              str::stream()
+                                  << "Invalid " << kParameterName << " document in "
+                                  << NamespaceString::kServerConfigurationNamespace.toString()
+                                  << ": " << featureCompatibilityVersionDoc << ". See "
+                                  << feature_compatibility_version_documentation::kCompatibilityLink
+                                  << ".");
+            }
+
+            if (version == FeatureCompatibilityParams::kLastLTS) {
+                return targetVersion == FeatureCompatibilityParams::kLastContinuous
+                    ? FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous
+                    : FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest;
+            } else {
+                uassert(5070601,
+                        str::stream()
+                            << "Invalid " << kParameterName << " document in "
+                            << NamespaceString::kServerConfigurationNamespace.toString() << ": "
+                            << featureCompatibilityVersionDoc << ". See "
+                            << feature_compatibility_version_documentation::kCompatibilityLink
+                            << ".",
+                        version == ServerGlobalParams::FeatureCompatibility::kLastContinuous);
+                return FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest;
+            }
+        }
+
+        // No "targetVersion" or "previousVersion" field.
+        return version;
     } catch (const DBException& e) {
         auto status = e.toStatus();
         status.addContext(str::stream()

@@ -76,15 +76,6 @@ public:
 
     static StringData serializeVersion(FeatureCompatibilityParams::Version version);
 
-    /**
-     * Given the server's current FCV and an optional target FCV, return one FCV that expresses
-     * the the server's FCV state.
-     */
-    static FeatureCompatibilityParams::Version fromCurrentAndTargetVersion(
-        FeatureCompatibilityParams::Version current,
-        boost::optional<FeatureCompatibilityParams::Version> target,
-        bool isFromConfigServer);
-
     static Status validatePreviousVersionField(FeatureCompatibilityParams::Version version);
 
     /**
