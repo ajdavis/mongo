@@ -31,6 +31,8 @@
 
 #include "mongo/platform/basic.h"
 
+#include <fmt/format.h>
+
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/catalog/coll_mod.h"
 #include "mongo/db/catalog/database.h"
@@ -69,6 +71,8 @@ using FCVP = FeatureCompatibilityVersionParser;
 using FeatureCompatibilityParams = ServerGlobalParams::FeatureCompatibility;
 using FCVVersion = FeatureCompatibilityParams::Version;
 
+using namespace fmt::literals;
+
 namespace {
 
 MONGO_FAIL_POINT_DEFINE(featureCompatibilityDowngrade);
@@ -102,6 +106,11 @@ struct FCVTransition {
     FCVVersion transitioning;
     FCVVersion to;
     bool isOnlyPermittedForConfigServer;
+
+    bool match(FCVVersion actualVersion, FCVVersion requestedVersion, bool isFromConfigServer) {
+        return (from == actualVersion || transitioning == actualVersion) &&
+            to == requestedVersion && (isFromConfigServer || !isOnlyPermittedForConfigServer);
+    }
 };
 
 static std::vector<FCVTransition> transitions{
@@ -140,16 +149,14 @@ Status validateSetFeatureCompatibilityVersionRequest(FCVVersion actualVersion,
                                                      FCVVersion requestedVersion,
                                                      bool isFromConfigServer) {
     auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
-        return t.from == actualVersion && t.to == requestedVersion &&
-            (isFromConfigServer || !t.isOnlyPermittedForConfigServer);
+        return t.match(actualVersion, requestedVersion, isFromConfigServer);
     });
 
     if (transition == transitions.end()) {
-        return Status(ErrorCodes::IllegalOperation,
-                      str::stream() << "cannot set featureCompatibilityVersion to "
-                                    << FCVP::toString(requestedVersion)
-                                    << " while in featureCompatibilityVersion "
-                                    << FCVP::toString(actualVersion) << ".");
+        return Status(
+            ErrorCodes::IllegalOperation,
+            "cannot set featureCompatibilityVersion to '{}' while featureCompatibilityVersion is '{}'"_format(
+                FCVP::toString(requestedVersion), FCVP::toString(actualVersion)));
     }
 
     return Status::OK();
