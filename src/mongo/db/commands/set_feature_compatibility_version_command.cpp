@@ -31,8 +31,6 @@
 
 #include "mongo/platform/basic.h"
 
-#include <fmt/format.h>
-
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/catalog/coll_mod.h"
 #include "mongo/db/catalog/database.h"
@@ -71,8 +69,6 @@ using FCVP = FeatureCompatibilityVersionParser;
 using FeatureCompatibilityParams = ServerGlobalParams::FeatureCompatibility;
 using FCVVersion = FeatureCompatibilityParams::Version;
 
-using namespace fmt::literals;
-
 namespace {
 
 MONGO_FAIL_POINT_DEFINE(featureCompatibilityDowngrade);
@@ -98,68 +94,6 @@ void deletePersistedDefaultRWConcernDocument(OperationContext* opCtx) {
         return deleteOp.serialize({});
     }());
     uassertStatusOK(getStatusFromWriteCommandReply(commandResponse->getCommandReply()));
-}
-
-// TODO: explain, especially regarding when lastContinuous == lastLTS
-struct FCVTransition {
-    FCVVersion from;
-    FCVVersion transitioning;
-    FCVVersion to;
-    bool isOnlyPermittedForConfigServer;
-
-    bool match(FCVVersion actualVersion, FCVVersion requestedVersion, bool isFromConfigServer) {
-        return (from == actualVersion || transitioning == actualVersion) &&
-            to == requestedVersion && (isFromConfigServer || !isOnlyPermittedForConfigServer);
-    }
-};
-
-static std::vector<FCVTransition> transitions{
-    // Upgrade from last-lts to latest:
-    FCVTransition{FeatureCompatibilityParams::kLastLTS,
-                  FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest,
-                  FeatureCompatibilityParams::kLatest,
-                  false},
-
-    // Upgrade from last-continuous to latest:
-    FCVTransition{FeatureCompatibilityParams::kLastContinuous,
-                  FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest,
-                  FeatureCompatibilityParams::kLatest,
-                  false},
-
-    // Downgrade from latest to last-lts:
-    FCVTransition{FeatureCompatibilityParams::kLatest,
-                  FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
-                  FeatureCompatibilityParams::kLastLTS,
-                  false},
-
-    // Downgrade from latest to last-continuous:
-    FCVTransition{FeatureCompatibilityParams::kLatest,
-                  FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
-                  FeatureCompatibilityParams::kLastContinuous,
-                  false},
-
-    // Upgrade from last-lts to last-continuous (only config server may request this transition):
-    FCVTransition{FeatureCompatibilityParams::kLastLTS,
-                  FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
-                  FeatureCompatibilityParams::kLastContinuous,
-                  true},
-};
-
-Status validateSetFeatureCompatibilityVersionRequest(FCVVersion actualVersion,
-                                                     FCVVersion requestedVersion,
-                                                     bool isFromConfigServer) {
-    auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
-        return t.match(actualVersion, requestedVersion, isFromConfigServer);
-    });
-
-    if (transition == transitions.end()) {
-        return Status(
-            ErrorCodes::IllegalOperation,
-            "cannot set featureCompatibilityVersion to '{}' while featureCompatibilityVersion is '{}'"_format(
-                FCVP::toString(requestedVersion), FCVP::toString(actualVersion)));
-    }
-
-    return Status::OK();
 }
 
 /**
@@ -273,7 +207,7 @@ public:
             return true;
         }
 
-        uassertStatusOK(validateSetFeatureCompatibilityVersionRequest(
+        uassertStatusOK(FeatureCompatibilityVersion::validateSetFeatureCompatibilityVersionRequest(
             actualVersion, requestedVersion, request.getFromConfigServer().value_or(false)));
 
         if (actualVersion < requestedVersion) {

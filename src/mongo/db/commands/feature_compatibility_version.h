@@ -66,6 +66,11 @@ public:
      */
     static void fassertInitializedAfterStartup(OperationContext* opCtx);
 
+    static Status validateSetFeatureCompatibilityVersionRequest(
+        ServerGlobalParams::FeatureCompatibility::Version fromVersion,
+        ServerGlobalParams::FeatureCompatibility::Version newVersion,
+        bool isFromConfigServer);
+
     /**
      * Records intent to perform a fromVersion -> newVersion upgrade by updating the on-disk
      * feature compatibility version document to have 'version'=currentVersion,
