@@ -97,60 +97,62 @@ void deletePersistedDefaultRWConcernDocument(OperationContext* opCtx) {
 }
 
 // TODO: explain, especially regarding when lastContinuous == lastLTS
-static stdx::unordered_set<std::tuple<FCVVersion, FCVVersion, bool>> FCVTransitions{
-    // Upgrade from last-lts to latest:
-    std::make_tuple(FeatureCompatibilityParams::kLastLTS,
-                    FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest,
-                    false),
-    std::make_tuple(FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest,
-                    FeatureCompatibilityParams::kLatest,
-                    false),
-
-    // Upgrade from last-continuous to latest:
-    std::make_tuple(FeatureCompatibilityParams::kLastContinuous,
-                    FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest,
-                    false),
-    std::make_tuple(FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest,
-                    FeatureCompatibilityParams::kLatest,
-                    false),
-
-    // Downgrade from latest to last-lts:
-    std::make_tuple(FeatureCompatibilityParams::kLatest,
-                    FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
-                    false),
-    std::make_tuple(FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
-                    FeatureCompatibilityParams::kLastLTS,
-                    false),
-
-    // Downgrade from latest to last-continuous:
-    std::make_tuple(FeatureCompatibilityParams::kLatest,
-                    FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
-                    false),
-    std::make_tuple(FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
-                    FeatureCompatibilityParams::kLastContinuous,
-                    false),
-
-    // Upgrade from last-lts to last-continuous (permitted from config server):
-    std::make_tuple(FeatureCompatibilityParams::kLastLTS,
-                    FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
-                    true),
-    std::make_tuple(FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
-                    FeatureCompatibilityParams::kLastContinuous,
-                    true),
+struct FCVTransition {
+    FCVVersion from;
+    FCVVersion transitioning;
+    FCVVersion to;
+    bool isOnlyPermittedForConfigServer;
 };
 
-Status validateFCVChangeRequest(FCVVersion actualVersion,
-                                FCVVersion requestedVersion,
-                                bool isFromConfigServer) {
-    if (FCVTransitions.contains(std::tuple(actualVersion, requestedVersion, isFromConfigServer))) {
-        return Status::OK();
+static std::vector<FCVTransition> transitions{
+    // Upgrade from last-lts to latest:
+    FCVTransition{FeatureCompatibilityParams::kLastLTS,
+                  FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest,
+                  FeatureCompatibilityParams::kLatest,
+                  false},
+
+    // Upgrade from last-continuous to latest:
+    FCVTransition{FeatureCompatibilityParams::kLastContinuous,
+                  FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest,
+                  FeatureCompatibilityParams::kLatest,
+                  false},
+
+    // Downgrade from latest to last-lts:
+    FCVTransition{FeatureCompatibilityParams::kLatest,
+                  FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
+                  FeatureCompatibilityParams::kLastLTS,
+                  false},
+
+    // Downgrade from latest to last-continuous:
+    FCVTransition{FeatureCompatibilityParams::kLatest,
+                  FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
+                  FeatureCompatibilityParams::kLastContinuous,
+                  false},
+
+    // Upgrade from last-lts to last-continuous (only config server may request this transition):
+    FCVTransition{FeatureCompatibilityParams::kLastLTS,
+                  FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
+                  FeatureCompatibilityParams::kLastContinuous,
+                  true},
+};
+
+Status validateSetFeatureCompatibilityVersionRequest(FCVVersion actualVersion,
+                                                     FCVVersion requestedVersion,
+                                                     bool isFromConfigServer) {
+    auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
+        return t.from == actualVersion && t.to == requestedVersion &&
+            (isFromConfigServer || !t.isOnlyPermittedForConfigServer);
+    });
+
+    if (transition == transitions.end()) {
+        return Status(ErrorCodes::IllegalOperation,
+                      str::stream() << "cannot set featureCompatibilityVersion to "
+                                    << FCVP::toString(requestedVersion)
+                                    << " while in featureCompatibilityVersion "
+                                    << FCVP::toString(actualVersion) << ".");
     }
 
-    return Status(ErrorCodes::IllegalOperation,
-                  str::stream() << "cannot set featureCompatibilityVersion to "
-                                << FCVP::toString(requestedVersion)
-                                << " while in featureCompatibilityVersion "
-                                << FCVP::toString(actualVersion) << ".");
+    return Status::OK();
 }
 
 /**
@@ -264,7 +266,7 @@ public:
             return true;
         }
 
-        uassertStatusOK(validateFCVChangeRequest(
+        uassertStatusOK(validateSetFeatureCompatibilityVersionRequest(
             actualVersion, requestedVersion, request.getFromConfigServer().value_or(false)));
 
         if (actualVersion < requestedVersion) {
