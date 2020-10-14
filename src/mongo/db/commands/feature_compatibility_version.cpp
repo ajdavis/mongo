@@ -70,65 +70,102 @@ using namespace fmt::literals;
 Lock::ResourceMutex FeatureCompatibilityVersion::fcvLock("featureCompatibilityVersionLock");
 
 namespace {
-// TODO: explain, especially regarding when lastContinuous == lastLTS
-struct FCVTransition {
-    FCVVersion from;
-    FCVVersion transitioning;
-    FCVVersion to;
-    boost::optional<FeatureCompatibilityParams::Version> previous;
+// TODO: add targetVersion
+struct FCVState {
+    FCVVersion effectiveVersion;
+    FCVVersion currentVersion;
+    boost::optional<FeatureCompatibilityParams::Version> previousVersion;
     bool isOnlyPermittedForConfigServer;
-
-    bool match(FCVVersion actualVersion, FCVVersion requestedVersion, bool isFromConfigServer) {
-        return (from == actualVersion || transitioning == actualVersion) &&
-            to == requestedVersion && (isFromConfigServer || !isOnlyPermittedForConfigServer);
-    }
 };
 
-static std::vector<FCVTransition> transitions{
-    // Upgrade from last-lts to latest:
-    FCVTransition{FeatureCompatibilityParams::kLastLTS,
-                  FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest,
-                  FeatureCompatibilityParams::kLatest,
-                  boost::none,
-                  false},
+// TODO: neaten with macros, explain
+// TODO: explain, especially regarding when lastContinuous == lastLTS
+// While upgrading or downgrading, we use the older of the two FCVs.
+// TODO: rename "transition" variables to "fcvState"
+static stdx::unordered_map<std::pair<FCVVersion, FCVVersion>, FCVState> transitions({
+    // Non-transitions. TODO: needed?
+    {{FeatureCompatibilityParams::kLastLTS, FeatureCompatibilityParams::kLastLTS},
+     {FeatureCompatibilityParams::kLastLTS, FeatureCompatibilityParams::kLastLTS}},
 
-    // Upgrade from last-continuous to latest:
-    FCVTransition{FeatureCompatibilityParams::kLastContinuous,
-                  FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest,
-                  FeatureCompatibilityParams::kLatest,
-                  boost::none,
-                  false},
+    {{FeatureCompatibilityParams::kLastContinuous, FeatureCompatibilityParams::kLastContinuous},
+     {FeatureCompatibilityParams::kLastContinuous, FeatureCompatibilityParams::kLastContinuous}},
 
-    // Downgrade from latest to last-lts:
-    FCVTransition{FeatureCompatibilityParams::kLatest,
-                  FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
-                  FeatureCompatibilityParams::kLastLTS,
-                  FeatureCompatibilityParams::kLatest,
-                  false},
+    {{FeatureCompatibilityParams::kLatest, FeatureCompatibilityParams::kLatest},
+     {FeatureCompatibilityParams::kLatest, FeatureCompatibilityParams::kLatest}},
 
-    // Downgrade from latest to last-continuous:
-    FCVTransition{FeatureCompatibilityParams::kLatest,
-                  FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
-                  FeatureCompatibilityParams::kLastContinuous,
-                  FeatureCompatibilityParams::kLatest,
-                  false},
+    // Start upgrade from last-lts to latest:
+    {{FeatureCompatibilityParams::kLastLTS, FeatureCompatibilityParams::kLatest},
+     {FeatureCompatibilityParams::kLastLTS,
+      FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest}},
 
-    // Upgrade from last-lts to last-continuous (only config server may request this transition):
-    FCVTransition{FeatureCompatibilityParams::kLastLTS,
-                  FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
-                  FeatureCompatibilityParams::kLastContinuous,
-                  boost::none,
-                  true},
-};
+    // Finish upgrade from last-lts to latest:
+    {{FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest,
+      FeatureCompatibilityParams::kLatest},
+     {FeatureCompatibilityParams::kLastLTS,
+      FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest}},
+
+    // Start upgrade from last-continuous to latest:
+    {{FeatureCompatibilityParams::kLastContinuous, FeatureCompatibilityParams::kLatest},
+     {FeatureCompatibilityParams::kLastContinuous,
+      FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest}},
+
+    // Finish upgrade from last-continuous to latest:
+    {{FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest,
+      FeatureCompatibilityParams::kLatest},
+     {FeatureCompatibilityParams::kLastContinuous,
+      FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest}},
+
+    // Start downgrade from latest to last-lts:
+    {{FeatureCompatibilityParams::kLatest, FeatureCompatibilityParams::kLastLTS},
+     {FeatureCompatibilityParams::kLastLTS,
+      FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
+      FeatureCompatibilityParams::kLatest}},
+
+    // Finish downgrade from latest to last-lts:
+    {{FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
+      FeatureCompatibilityParams::kLastLTS},
+     {FeatureCompatibilityParams::kLastLTS,
+      FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
+      FeatureCompatibilityParams::kLatest}},
+
+    // Start downgrade from latest to last-continuous:
+    {{FeatureCompatibilityParams::kLatest, FeatureCompatibilityParams::kLastContinuous},
+     {FeatureCompatibilityParams::kLastContinuous,
+      FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
+      FeatureCompatibilityParams::kLatest}},
+
+    // Finish downgrade from latest to last-continuous:
+    {{FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
+      FeatureCompatibilityParams::kLastContinuous},
+     {FeatureCompatibilityParams::kLastContinuous,
+      FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
+      FeatureCompatibilityParams::kLatest}},
+
+    // Start upgrade from last-lts to last-continuous (only config server may request this
+    // transition):
+    {{FeatureCompatibilityParams::kLastLTS, FeatureCompatibilityParams::kLastContinuous},
+     {FeatureCompatibilityParams::kLastLTS,
+      FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
+      boost::none,
+      true}},
+
+    // Finish upgrade from last-lts to last-continuous (only config server may request this
+    // transition):
+    {{FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
+      FeatureCompatibilityParams::kLastContinuous},
+     {FeatureCompatibilityParams::kLastLTS,
+      FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
+      boost::none,
+      true}},
+});
 }  // namespace
 
 Status FeatureCompatibilityVersion::validateSetFeatureCompatibilityVersionRequest(
     FCVVersion fromVersion, FCVVersion newVersion, bool isFromConfigServer) {
-    auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
-        return t.match(fromVersion, newVersion, isFromConfigServer);
-    });
 
-    if (transition == transitions.end()) {
+    auto it = transitions.find({fromVersion, newVersion});
+    if (it == transitions.end() ||
+        (it->second.isOnlyPermittedForConfigServer && !isFromConfigServer)) {
         return Status(
             ErrorCodes::IllegalOperation,
             "cannot set featureCompatibilityVersion to '{}' while featureCompatibilityVersion is '{}'"_format(
@@ -139,19 +176,23 @@ Status FeatureCompatibilityVersion::validateSetFeatureCompatibilityVersionReques
 }
 
 namespace {
-void setFCVDocumentFields(FeatureCompatibilityVersionDocument& doc, FCVVersion fromVersion, FCVVersion newVersion )
-{
-    // TODO: factor with above
-    auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
-      return t.match(fromVersion, newVersion, true /* TODO: explain */);
-    });
+void setFCVDocumentFields(FeatureCompatibilityVersionDocument& doc,
+                          FCVState fcvState) {
+    doc.setVersion(fcvState.effectiveVersion);
+    doc.setTargetVersion(fcvState.);
+    doc.setPreviousVersion(fcvState.previousVersion);
+}
 
-    fassert(0, transition != transitions.end());
+void setFCVDocumentFields(FeatureCompatibilityVersionDocument& doc,
+                          FCVVersion fromVersion,
+                          FCVVersion newVersion) {
+    auto it = transitions.find({fromVersion, newVersion});
+    fassert(0, it != transitions.end());
+    auto& transition = it->second;
 
-    // While upgrading or downgrading, we use the older of the two FCVs.
-    doc.setVersion(std::min(transition->from, transition->to));
+    doc.setVersion(transition.effectiveVersion);
     doc.setTargetVersion(newVersion);
-    doc.setPreviousVersion(transition->previous);
+    doc.setPreviousVersion(transition.previousVersion);
 }
 
 bool isWriteableStorageEngine() {
@@ -219,6 +260,7 @@ void FeatureCompatibilityVersion::setTargetUpgradeOrDowngrade(
     runUpdateCommand(opCtx, fcvDoc);
 }
 
+// TODO: merge with setTargetUpgradeOrDowngrade
 void FeatureCompatibilityVersion::unsetTargetUpgradeOrDowngrade(
     OperationContext* opCtx, FeatureCompatibilityParams::Version version) {
     // Updates 'version' field, while also unsetting the 'targetVersion' field and the
@@ -406,20 +448,18 @@ void FeatureCompatibilityVersionParameter::append(OperationContext* opCtx,
     FeatureCompatibilityVersionDocument fcvDoc;
     BSONObjBuilder featureCompatibilityVersionBuilder(b.subobjStart(name));
     auto version = serverGlobalParams.featureCompatibility.getVersion();
-    auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
-      return t.
-    });
     if (serverGlobalParams.featureCompatibility.isUpgradingOrDowngrading()) {
-        fcvDoc.setVersion(getFcvDocVersionField(version));
-        fcvDoc.setTargetVersion(getFcvDocTargetVersionField(version));
-        // TODO: add previousVersion to table
-        if (version == FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous ||
-            version == FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS) {
-            // We only support downgrading from the latest FCV.
-            fcvDoc.setPreviousVersion(FeatureCompatibilityParams::kLatest);
-        }
+        auto transition =
+            std::find_if(transitions.begin(), transitions.end(), [&](const auto& state) {
+                return state.currentVersion == version;
+            });
+        setFCVDocumentFields(fcvDoc, transition->second);
     } else {
-        fcvDoc.setVersion(version);
+        auto transition =
+            std::find_if(transitions.begin(), transitions.end(), [&](const auto& state) {
+                return state.currentVersion == version;
+            });
+        setFCVDocumentFields(fcvDoc, transition);
     }
     featureCompatibilityVersionBuilder.appendElements(fcvDoc.toBSON().removeField("_id"));
 }
