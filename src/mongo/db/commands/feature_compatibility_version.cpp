@@ -193,9 +193,10 @@ void runUpdateCommand(OperationContext* opCtx, const FeatureCompatibilityVersion
  * in-memory FCV value. Returns boost::none if current FCV is not currently upgrading or
  * downgrading.
  */
-boost::optional<FeatureCompatibilityParams::Version> getFcvDocTargetVersionField(FeatureCompatibilityParams::Version currentVersion) {
+boost::optional<FeatureCompatibilityParams::Version> getFcvDocTargetVersionField(
+    FeatureCompatibilityParams::Version currentVersion) {
     auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
-      return t.transitioning == currentVersion;
+        return t.transitioning == currentVersion;
     });
 
     if (transition == transitions.end()) {
@@ -210,9 +211,10 @@ boost::optional<FeatureCompatibilityParams::Version> getFcvDocTargetVersionField
  * Returns the expected value of the 'version' field in the FCV document based on the in-memory FCV
  * value.
  */
-FeatureCompatibilityParams::Version getFcvDocVersionField(FeatureCompatibilityParams::Version currentVersion) {
+FeatureCompatibilityParams::Version getFcvDocVersionField(
+    FeatureCompatibilityParams::Version currentVersion) {
     auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
-      return t.transitioning == currentVersion;
+        return t.transitioning == currentVersion;
     });
 
     if (transition == transitions.end()) {
