@@ -72,21 +72,12 @@ public:
         bool isFromConfigServer);
 
     /**
-     * Records intent to perform a fromVersion -> newVersion upgrade by updating the on-disk
-     * feature compatibility version document to have 'version'=currentVersion,
-     * 'targetVersion'=newVersion. Should be called before schemas are modified.
+     * Records intent to perform a fromVersion -> newVersion transition by updating the on-disk
+     * feature compatibility version document. Should be called before schemas are modified.
      */
-    static void setTargetUpgradeFrom(OperationContext* opCtx,
+    static void setTargetUpgradeOrDowngrade(OperationContext* opCtx,
                                      ServerGlobalParams::FeatureCompatibility::Version fromVersion,
                                      ServerGlobalParams::FeatureCompatibility::Version newVersion);
-
-    /**
-     * Records intent to perform a downgrade from the latest version by updating the on-disk feature
-     * compatibility version document to have 'version'=version, 'targetVersion'=version and
-     * 'previousVersion'=kLatest. Should be called before schemas are modified.
-     */
-    static void setTargetDowngrade(OperationContext* opCtx,
-                                   ServerGlobalParams::FeatureCompatibility::Version version);
 
     /**
      * Records the completion of a upgrade or downgrade by updating the on-disk

@@ -75,6 +75,7 @@ struct FCVTransition {
     FCVVersion from;
     FCVVersion transitioning;
     FCVVersion to;
+    boost::optional<FeatureCompatibilityParams::Version> previous;
     bool isOnlyPermittedForConfigServer;
 
     bool match(FCVVersion actualVersion, FCVVersion requestedVersion, bool isFromConfigServer) {
@@ -88,30 +89,35 @@ static std::vector<FCVTransition> transitions{
     FCVTransition{FeatureCompatibilityParams::kLastLTS,
                   FeatureCompatibilityParams::kUpgradingFromLastLTSToLatest,
                   FeatureCompatibilityParams::kLatest,
+                  boost::none,
                   false},
 
     // Upgrade from last-continuous to latest:
     FCVTransition{FeatureCompatibilityParams::kLastContinuous,
                   FeatureCompatibilityParams::kUpgradingFromLastContinuousToLatest,
                   FeatureCompatibilityParams::kLatest,
+                  boost::none,
                   false},
 
     // Downgrade from latest to last-lts:
     FCVTransition{FeatureCompatibilityParams::kLatest,
                   FeatureCompatibilityParams::kDowngradingFromLatestToLastLTS,
                   FeatureCompatibilityParams::kLastLTS,
+                  FeatureCompatibilityParams::kLatest,
                   false},
 
     // Downgrade from latest to last-continuous:
     FCVTransition{FeatureCompatibilityParams::kLatest,
                   FeatureCompatibilityParams::kDowngradingFromLatestToLastContinuous,
                   FeatureCompatibilityParams::kLastContinuous,
+                  FeatureCompatibilityParams::kLatest,
                   false},
 
     // Upgrade from last-lts to last-continuous (only config server may request this transition):
     FCVTransition{FeatureCompatibilityParams::kLastLTS,
                   FeatureCompatibilityParams::kUpgradingFromLastLTSToLastContinuous,
                   FeatureCompatibilityParams::kLastContinuous,
+                  boost::none,
                   true},
 };
 }  // namespace
@@ -133,6 +139,21 @@ Status FeatureCompatibilityVersion::validateSetFeatureCompatibilityVersionReques
 }
 
 namespace {
+void setFCVDocumentFields(FeatureCompatibilityVersionDocument& doc, FCVVersion fromVersion, FCVVersion newVersion )
+{
+    // TODO: factor with above
+    auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
+      return t.match(fromVersion, newVersion, true /* TODO: explain */);
+    });
+
+    fassert(0, transition != transitions.end());
+
+    // While upgrading or downgrading, we use the older of the two FCVs.
+    doc.setVersion(std::min(transition->from, transition->to));
+    doc.setTargetVersion(newVersion);
+    doc.setPreviousVersion(transition->previous);
+}
+
 bool isWriteableStorageEngine() {
     return !storageGlobalParams.readOnly && (storageGlobalParams.engine != "devnull");
 }
@@ -187,67 +208,14 @@ void runUpdateCommand(OperationContext* opCtx, const FeatureCompatibilityVersion
     client.runCommand(nss.db().toString(), updateCmd.obj(), updateResult);
     uassertStatusOK(getStatusFromWriteCommandReply(updateResult));
 }
-
-/**
- * Returns the expected value of the 'targetVersion' field in the FCV document based on the
- * in-memory FCV value. Returns boost::none if current FCV is not currently upgrading or
- * downgrading.
- */
-boost::optional<FeatureCompatibilityParams::Version> getFcvDocTargetVersionField(
-    FeatureCompatibilityParams::Version currentVersion) {
-    auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
-        return t.transitioning == currentVersion;
-    });
-
-    if (transition == transitions.end()) {
-        // Not currently upgrading or downgrading.
-        return boost::none;
-    }
-
-    return transition->to;
-}
-
-/**
- * Returns the expected value of the 'version' field in the FCV document based on the in-memory FCV
- * value.
- */
-FeatureCompatibilityParams::Version getFcvDocVersionField(
-    FeatureCompatibilityParams::Version currentVersion) {
-    auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
-        return t.transitioning == currentVersion;
-    });
-
-    if (transition == transitions.end()) {
-        // Not currently upgrading or downgrading.
-        return currentVersion;
-    }
-
-    // While upgrading or downgrading, we use the older of the two FCVs.
-    return std::min(transition->from, transition->to);
-}
 }  // namespace
 
-// TODO: just setTarget()?
-void FeatureCompatibilityVersion::setTargetUpgradeFrom(
+void FeatureCompatibilityVersion::setTargetUpgradeOrDowngrade(
     OperationContext* opCtx,
     FeatureCompatibilityParams::Version fromVersion,
     FeatureCompatibilityParams::Version newVersion) {
-    invariant(fromVersion < newVersion);
-
-    // Sets both 'version' and 'targetVersion' fields.
     FeatureCompatibilityVersionDocument fcvDoc;
-    fcvDoc.setVersion(getFcvDocVersionField(fromVersion));
-    fcvDoc.setTargetVersion(newVersion);
-    runUpdateCommand(opCtx, fcvDoc);
-}  // namespace mongo
-
-void FeatureCompatibilityVersion::setTargetDowngrade(OperationContext* opCtx,
-                                                     FeatureCompatibilityParams::Version version) {
-    // Sets 'version', 'targetVersion' and 'previousVersion' fields.
-    FeatureCompatibilityVersionDocument fcvDoc;
-    fcvDoc.setVersion(version);
-    fcvDoc.setTargetVersion(version);
-    fcvDoc.setPreviousVersion(FeatureCompatibilityParams::kLatest);
+    setFCVDocumentFields(fcvDoc, fromVersion, newVersion);
     runUpdateCommand(opCtx, fcvDoc);
 }
 
@@ -438,6 +406,9 @@ void FeatureCompatibilityVersionParameter::append(OperationContext* opCtx,
     FeatureCompatibilityVersionDocument fcvDoc;
     BSONObjBuilder featureCompatibilityVersionBuilder(b.subobjStart(name));
     auto version = serverGlobalParams.featureCompatibility.getVersion();
+    auto transition = std::find_if(transitions.begin(), transitions.end(), [&](auto& t) {
+      return t.
+    });
     if (serverGlobalParams.featureCompatibility.isUpgradingOrDowngrading()) {
         fcvDoc.setVersion(getFcvDocVersionField(version));
         fcvDoc.setTargetVersion(getFcvDocTargetVersionField(version));
