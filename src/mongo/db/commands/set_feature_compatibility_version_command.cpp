@@ -211,8 +211,7 @@ public:
             actualVersion, requestedVersion, request.getFromConfigServer().value_or(false)));
 
         if (actualVersion < requestedVersion) {
-            FeatureCompatibilityVersion::setTargetUpgradeFrom(
-                opCtx, actualVersion, requestedVersion);
+            FeatureCompatibilityVersion::setTarget(opCtx, actualVersion, requestedVersion);
             {
                 // Take the global lock in S mode to create a barrier for operations taking the
                 // global IX or X locks. This ensures that either
@@ -243,7 +242,8 @@ public:
             }
 
             hangWhileUpgrading.pauseWhileSet(opCtx);
-            FeatureCompatibilityVersion::unsetTargetUpgradeOrDowngrade(opCtx, requestedVersion);
+            // Completed transition to requestedVersion.
+            FeatureCompatibilityVersion::setTarget(opCtx, requestedVersion, requestedVersion);
         } else {
             auto replCoord = repl::ReplicationCoordinator::get(opCtx);
             const bool isReplSet =
@@ -270,7 +270,7 @@ public:
                 "nodes");
             LOGV2(4637905, "The current replica set config has been propagated to all nodes.");
 
-            FeatureCompatibilityVersion::setTargetDowngrade(opCtx, requestedVersion);
+            FeatureCompatibilityVersion::setTarget(opCtx, actualVersion, requestedVersion);
 
             {
                 // Take the global lock in S mode to create a barrier for operations taking the
@@ -303,7 +303,8 @@ public:
             }
 
             hangWhileDowngrading.pauseWhileSet(opCtx);
-            FeatureCompatibilityVersion::unsetTargetUpgradeOrDowngrade(opCtx, requestedVersion);
+            // Completed transition to requestedVersion.
+            FeatureCompatibilityVersion::setTarget(opCtx, requestedVersion, requestedVersion);
 
             if (request.getDowngradeOnDiskChanges()) {
                 invariant(requestedVersion == FeatureCompatibilityParams::kLastContinuous);

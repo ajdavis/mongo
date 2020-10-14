@@ -73,20 +73,12 @@ public:
 
     /**
      * Records intent to perform a fromVersion -> newVersion transition by updating the on-disk
-     * feature compatibility version document. Should be called before schemas are modified.
+     * feature compatibility version document, or records the completion of a transition when
+     * fromVersion == newVersion. Should be called before schemas are modified.
      */
-    static void setTargetUpgradeOrDowngrade(OperationContext* opCtx,
-                                     ServerGlobalParams::FeatureCompatibility::Version fromVersion,
-                                     ServerGlobalParams::FeatureCompatibility::Version newVersion);
-
-    /**
-     * Records the completion of a upgrade or downgrade by updating the on-disk
-     * feature compatibility version document to have 'version'=version and unsetting the
-     * 'targetVersion' field and the 'previousVersion' field. Should be called after schemas are
-     * modified.
-     */
-    static void unsetTargetUpgradeOrDowngrade(
-        OperationContext* opCtx, ServerGlobalParams::FeatureCompatibility::Version version);
+    static void setTarget(OperationContext* opCtx,
+                          ServerGlobalParams::FeatureCompatibility::Version fromVersion,
+                          ServerGlobalParams::FeatureCompatibility::Version newVersion);
 
     /**
      * If there are no non-local databases, store the featureCompatibilityVersion document. If we
