@@ -63,115 +63,141 @@ namespace mongo {
 using repl::UnreplicatedWritesBlock;
 using FCVP = FeatureCompatibilityVersionParser;
 using FCVParams = ServerGlobalParams::FeatureCompatibility;
-using FCVVersion = FCVParams::Version;
+using FCV = FCVParams::Version;
 
 using namespace fmt::literals;
 
 Lock::ResourceMutex FeatureCompatibilityVersion::fcvLock("featureCompatibilityVersionLock");
 
 namespace {
-struct FCVState {
-    FCVVersion effectiveVersion;
-    FCVVersion currentVersion;
-    boost::optional<FCVParams::Version> targetVersion;
-    boost::optional<FCVParams::Version> previousVersion;
-    bool isOnlyPermittedForConfigServer;
-};
 
-// TODO: neaten with macros, explain
-// TODO: explain, especially regarding when lastContinuous == lastLTS
-// While upgrading or downgrading, we use the older of the two FCVs.
-// TODO: rename "transition" variables to "fcvState"
-using FCVTransitions = stdx::unordered_map<std::pair<FCVVersion, FCVVersion>, FCVState>;
-const FCVTransitions transitions({
-    // Non-transitions. TODO: needed?
-    {{FCVParams::kLastLTS, FCVParams::kLastLTS}, {FCVParams::kLastLTS, FCVParams::kLastLTS}},
+const class FCVTransitions {
+public:
+    FCVTransitions() {
+        // Steady states.
+        for (auto fcv :
+             std::vector{FCVParams::kLastLTS, FCVParams::kLastContinuous, FCVParams::kLatest}) {
+            _transitions[{fcv, fcv}] = {fcv /* effective */, fcv /* current */};
+        }
 
-    {{FCVParams::kLastContinuous, FCVParams::kLastContinuous},
-     {FCVParams::kLastContinuous, FCVParams::kLastContinuous}},
+        for (auto [from, upgrading, to] :
+             std::vector{std::make_tuple(FCVParams::kLastLTS,
+                                         FCVParams::kUpgradingFromLastLTSToLatest,
+                                         FCVParams::kLatest),
+                         std::make_tuple(FCVParams::kLastContinuous,
+                                         FCVParams::kUpgradingFromLastContinuousToLatest,
+                                         FCVParams::kLatest)}) {
+            // Start or resume upgrading to latest. If this release's lastContinuous == lastLTS
+            // then the second loop iteration just overwrites the first.
+            _transitions[{from, to}] = _transitions[{upgrading, to}] = {
+                from /* effective */, upgrading /* current */, to /* target */
+            };
+        }
 
-    {{FCVParams::kLatest, FCVParams::kLatest}, {FCVParams::kLatest, FCVParams::kLatest}},
+        // Only config servers may request an upgrade from lastLTS to lastContinuous.
+        _transitions[{FCVParams::kLastLTS, FCVParams::kLastContinuous}] = _transitions[{
+            FCVParams::kUpgradingFromLastLTSToLastContinuous, FCVParams::kLastContinuous}] = {
+            FCVParams::kLastLTS /* effective */,
+            FCVParams::kUpgradingFromLastLTSToLastContinuous /* current */,
+            FCVParams::kLastContinuous /* target */,
+            boost::none /* previous */,
+            true /* isOnlyPermittedForConfigServer */
+        };
 
-    // Start upgrade from last-lts to latest:
-    {{FCVParams::kLastLTS, FCVParams::kLatest},
-     {FCVParams::kLastLTS, FCVParams::kUpgradingFromLastLTSToLatest, FCVParams::kLatest}},
+        for (auto [downgrading, to] :
+             std::vector{std::make_tuple(FCVParams::kDowngradingFromLatestToLastContinuous,
+                                         FCVParams::kLastContinuous),
+                         std::make_tuple(FCVParams::kDowngradingFromLatestToLastLTS,
+                                         FCVParams::kLastLTS)}) {
+            // Start or resume downgrade from latest.
+            _transitions[{FCVParams::kLatest, to}] = _transitions[{downgrading, to}] = {
+                to /* effective */,
+                downgrading /* current */,
+                to /* target */,
+                FCVParams::kLatest /* previous */
+            };
+        }
+    }
 
-    // Resume upgrade from last-lts to latest:
-    {{FCVParams::kUpgradingFromLastLTSToLatest, FCVParams::kLatest},
-     {FCVParams::kLastLTS, FCVParams::kUpgradingFromLastLTSToLatest}},
+    /**
+     * True if a server in FCV "fromVersion" can transition to "newVersion".
+     */
+    bool permitsTransition(FCV fromVersion, FCV newVersion, bool isFromConfigServer) const {
+        auto it = _transitions.find({fromVersion, newVersion});
+        return (it != _transitions.end() &&
+                (!it->second.isOnlyPermittedForConfigServer || isFromConfigServer));
+    }
 
-    // Start upgrade from last-continuous to latest:
-    {{FCVParams::kLastContinuous, FCVParams::kLatest},
-     {FCVParams::kLastContinuous,
-      FCVParams::kUpgradingFromLastContinuousToLatest,
-      FCVParams::kLatest}},
+    /**
+     * Set fcvDoc's fields from a transitional FCV like kUpgradingFromLastLTSToLastContinuous.
+     */
+    void setFCVDocumentFieldsInSteadyState(FeatureCompatibilityVersionDocument& fcvDoc,
+                                           FCV currentVersion) const {
+        logd("setFCVDocumentFieldsInSteadyState {}", FCVP::toString(currentVersion));
+        const auto& transition = _transitions.find({currentVersion, currentVersion});
+        fassert(0, transition != _transitions.end());
+        _setFCVDocumentFields(fcvDoc, transition->second);
+    }
 
-    // Resume upgrade from last-continuous to latest:
-    {{FCVParams::kUpgradingFromLastContinuousToLatest, FCVParams::kLatest},
-     {FCVParams::kLastContinuous, FCVParams::kUpgradingFromLastContinuousToLatest}},
+    /**
+     * Set fcvDoc's fields from a transitional FCV like kUpgradingFromLastLTSToLastContinuous.
+     */
+    void setFCVDocumentFieldsDuringTransition(FeatureCompatibilityVersionDocument& fcvDoc,
+                                              FCV upgradingOrDowngradingVersion) const {
+        logd("setFCVDocumentFieldsDuringTransition {}",
+             FCVP::toString(upgradingOrDowngradingVersion));
+        // Find the state associated with resuming this upgrade or downgrade.
+        const auto& transition =
+            std::find_if(_transitions.begin(), _transitions.end(), [&](const auto& value) {
+                const auto& key = value.first;
+                return key.first == upgradingOrDowngradingVersion;
+            });
+        fassert(0, transition != _transitions.end());
+        _setFCVDocumentFields(fcvDoc, transition->second);
+    }
 
-    // Start downgrade from latest to last-lts:
-    {{FCVParams::kLatest, FCVParams::kLastLTS},
-     {FCVParams::kLastLTS,
-      FCVParams::kDowngradingFromLatestToLastLTS,
-      FCVParams::kLastLTS,
-      FCVParams::kLatest}},
+    /**
+     * Set fcvDoc's fields while transitioning from fromVersion to newVersion.
+     */
+    void setFCVDocumentFieldsDuringTransition(FeatureCompatibilityVersionDocument& fcvDoc,
+                                              FCV fromVersion,
+                                              FCV newVersion) const {
+        logd("setFCVDocumentFields {} {}", FCVP::toString(fromVersion), FCVP::toString(newVersion));
+        const auto transition = _transitions.find({fromVersion, newVersion});
+        fassert(0, transition != _transitions.end());
+        _setFCVDocumentFields(fcvDoc, transition->second);
+    }
 
-    // Resume downgrade from latest to last-lts:
-    {{FCVParams::kDowngradingFromLatestToLastLTS, FCVParams::kLastLTS},
-     {FCVParams::kLastLTS,
-      FCVParams::kDowngradingFromLatestToLastLTS,
-      FCVParams::kLastLTS,
-      FCVParams::kLatest}},
+private:
+    // Expresses the server's feature compatibility while transitioning or in steady state.
+    struct FCVState {
+        // What features we support during the transition.
+        FCV effectiveVersion;
 
-    // Start downgrade from latest to last-continuous:
-    {{FCVParams::kLatest, FCVParams::kLastContinuous},
-     {FCVParams::kLastContinuous,
-      FCVParams::kDowngradingFromLatestToLastContinuous,
-      FCVParams::kLastContinuous,
-      FCVParams::kLatest}},
+        // ServerGlobalParams::FeatureCompatibility::getVersion() during the transition.
+        FCV currentVersion;
 
-    // Resume downgrade from latest to last-continuous:
-    {{FCVParams::kDowngradingFromLatestToLastContinuous, FCVParams::kLastContinuous},
-     {FCVParams::kLastContinuous,
-      FCVParams::kDowngradingFromLatestToLastContinuous,
-      FCVParams::kLastContinuous,
-      FCVParams::kLatest}},
+        // The transition's goal FCV.
+        boost::optional<FCVParams::Version> targetVersion;
 
-    // Start upgrade from last-lts to last-continuous (only config server may request this
-    // transition):
-    {{FCVParams::kLastLTS, FCVParams::kLastContinuous},
-     {FCVParams::kLastLTS,
-      FCVParams::kUpgradingFromLastLTSToLastContinuous,
-      FCVParams::kLastContinuous,
-      boost::none,
-      true}},
+        // The previous FCV while downgrading.
+        boost::optional<FCVParams::Version> previousVersion;
 
-    // Resume upgrade from last-lts to last-continuous (only config server may request this
-    // transition):
-    {{FCVParams::kUpgradingFromLastLTSToLastContinuous, FCVParams::kLastContinuous},
-     {FCVParams::kLastLTS,
-      FCVParams::kUpgradingFromLastLTSToLastContinuous,
-      boost::none,
-      boost::none,
-      true}},
-});
+        // Config servers are permitted to request special transitions.
+        bool isOnlyPermittedForConfigServer;
+    };
 
-void setFCVDocumentFields(FeatureCompatibilityVersionDocument& doc,
-                          const FCVTransitions::value_type& value) {
-    const auto& fcvState = value.second;
-    doc.setVersion(fcvState.effectiveVersion);
-    doc.setTargetVersion(fcvState.targetVersion);
-    doc.setPreviousVersion(fcvState.previousVersion);
-}
+    // Map: (fromVersion, newVersion) -> state during transition from fromVersion to newVersion.
+    using Table = stdx::unordered_map<std::pair<FCV, FCV>, FCVState>;
+    Table _transitions;
 
-void setFCVDocumentFields(FeatureCompatibilityVersionDocument& doc,
-                          FCVVersion fromVersion,
-                          FCVVersion newVersion) {
-    auto it = transitions.find({fromVersion, newVersion});
-    fassert(0, it != transitions.end());
-    setFCVDocumentFields(doc, *it);
-}
+    void _setFCVDocumentFields(FeatureCompatibilityVersionDocument& fcvDoc,
+                               const FCVState& fcvState) const {
+        fcvDoc.setVersion(fcvState.effectiveVersion);
+        fcvDoc.setTargetVersion(fcvState.targetVersion);
+        fcvDoc.setPreviousVersion(fcvState.previousVersion);
+    }
+} fcvTransitions;
 
 bool isWriteableStorageEngine() {
     return !storageGlobalParams.readOnly && (storageGlobalParams.engine != "devnull");
@@ -230,11 +256,8 @@ void runUpdateCommand(OperationContext* opCtx, const FeatureCompatibilityVersion
 }  // namespace
 
 Status FeatureCompatibilityVersion::validateSetFeatureCompatibilityVersionRequest(
-    FCVVersion fromVersion, FCVVersion newVersion, bool isFromConfigServer) {
-
-    auto it = transitions.find({fromVersion, newVersion});
-    if (it == transitions.end() ||
-        (it->second.isOnlyPermittedForConfigServer && !isFromConfigServer)) {
+    FCV fromVersion, FCV newVersion, bool isFromConfigServer) {
+    if (!fcvTransitions.permitsTransition(fromVersion, newVersion, isFromConfigServer)) {
         return Status(
             ErrorCodes::IllegalOperation,
             "cannot set featureCompatibilityVersion to '{}' while featureCompatibilityVersion is '{}'"_format(
@@ -247,8 +270,11 @@ Status FeatureCompatibilityVersion::validateSetFeatureCompatibilityVersionReques
 void FeatureCompatibilityVersion::setTarget(OperationContext* opCtx,
                                             FCVParams::Version fromVersion,
                                             FCVParams::Version newVersion) {
+    logd("setTarget fromVersion {} newVersion {}",
+         FCVP::toString(fromVersion),
+         FCVP::toString(newVersion));
     FeatureCompatibilityVersionDocument fcvDoc;
-    setFCVDocumentFields(fcvDoc, fromVersion, newVersion);
+    fcvTransitions.setFCVDocumentFieldsDuringTransition(fcvDoc, fromVersion, newVersion);
     runUpdateCommand(opCtx, fcvDoc);
 }
 
@@ -303,7 +329,6 @@ bool FeatureCompatibilityVersion::isCleanStartUp() {
 }
 
 void FeatureCompatibilityVersion::updateMinWireVersion() {
-    // TODO: factor
     WireSpec& wireSpec = WireSpec::instance();
     const auto currentFcv = serverGlobalParams.featureCompatibility.getVersion();
     if (currentFcv == FCVParams::kLatest ||
@@ -430,22 +455,11 @@ void FeatureCompatibilityVersionParameter::append(OperationContext* opCtx,
     FeatureCompatibilityVersionDocument fcvDoc;
     BSONObjBuilder featureCompatibilityVersionBuilder(b.subobjStart(name));
     auto version = serverGlobalParams.featureCompatibility.getVersion();
-    FCVTransitions::const_iterator transition;
     if (serverGlobalParams.featureCompatibility.isUpgradingOrDowngrading()) {
-        transition = std::find_if(transitions.begin(), transitions.end(), [&](const auto& value) {
-            const auto& key = value.first;
-            // Transition table entry where fromVersion == version.
-            return key.first == version;
-        });
+        fcvTransitions.setFCVDocumentFieldsDuringTransition(fcvDoc, version);
     } else {
-        transition = std::find_if(transitions.begin(), transitions.end(), [&](const auto& value) {
-            const auto& key = value.first;
-            // Transition table entry where fromVersion == toVersion == version.
-            return key.first == version && key.second == version;
-        });
+        fcvTransitions.setFCVDocumentFieldsInSteadyState(fcvDoc, version);
     }
-    fassert(0, transition != transitions.end());
-    setFCVDocumentFields(fcvDoc, *transition);
     featureCompatibilityVersionBuilder.appendElements(fcvDoc.toBSON().removeField("_id"));
 }
 
