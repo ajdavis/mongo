@@ -133,9 +133,8 @@ public:
      */
     void setFCVDocumentFieldsInSteadyState(FeatureCompatibilityVersionDocument& fcvDoc,
                                            FCV currentVersion) const {
-        logd("setFCVDocumentFieldsInSteadyState {}", FCVP::toString(currentVersion));
         const auto& transition = _transitions.find({currentVersion, currentVersion});
-        fassert(0, transition != _transitions.end());
+        fassert(5147400, transition != _transitions.end());
         _setFCVDocumentFields(fcvDoc, transition->second);
     }
 
@@ -144,15 +143,13 @@ public:
      */
     void setFCVDocumentFieldsDuringTransition(FeatureCompatibilityVersionDocument& fcvDoc,
                                               FCV upgradingOrDowngradingVersion) const {
-        logd("setFCVDocumentFieldsDuringTransition {}",
-             FCVP::toString(upgradingOrDowngradingVersion));
         // Find the state associated with resuming this upgrade or downgrade.
         const auto& transition =
             std::find_if(_transitions.begin(), _transitions.end(), [&](const auto& value) {
                 const auto& key = value.first;
                 return key.first == upgradingOrDowngradingVersion;
             });
-        fassert(0, transition != _transitions.end());
+        fassert(5147401, transition != _transitions.end());
         _setFCVDocumentFields(fcvDoc, transition->second);
     }
 
@@ -162,9 +159,8 @@ public:
     void setFCVDocumentFieldsDuringTransition(FeatureCompatibilityVersionDocument& fcvDoc,
                                               FCV fromVersion,
                                               FCV newVersion) const {
-        logd("setFCVDocumentFields {} {}", FCVP::toString(fromVersion), FCVP::toString(newVersion));
         const auto transition = _transitions.find({fromVersion, newVersion});
-        fassert(0, transition != _transitions.end());
+        fassert(5147402, transition != _transitions.end());
         _setFCVDocumentFields(fcvDoc, transition->second);
     }
 
@@ -270,9 +266,6 @@ Status FeatureCompatibilityVersion::validateSetFeatureCompatibilityVersionReques
 void FeatureCompatibilityVersion::setTarget(OperationContext* opCtx,
                                             FCVParams::Version fromVersion,
                                             FCVParams::Version newVersion) {
-    logd("setTarget fromVersion {} newVersion {}",
-         FCVP::toString(fromVersion),
-         FCVP::toString(newVersion));
     FeatureCompatibilityVersionDocument fcvDoc;
     fcvTransitions.setFCVDocumentFieldsDuringTransition(fcvDoc, fromVersion, newVersion);
     runUpdateCommand(opCtx, fcvDoc);
